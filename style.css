@@ -9,6 +9,7 @@
   --line: #ecdfdc;
   --accent: #c8336a;
   --accent-ink: #ffffff;
+  --accent-soft: #fbdbe5;
   --period: #e04a78;
   --period-soft: #fbdbe5;
   --period-ink: #9c1f48;
@@ -40,6 +41,7 @@
     --line: #3a2d33;
     --accent: #ff6b97;
     --accent-ink: #2a0d18;
+    --accent-soft: #4d2332;
     --period: #f0628f;
     --period-soft: #4d2332;
     --period-ink: #ffb3c9;
@@ -59,6 +61,59 @@
     --indigo-bg: #2c2647; --indigo-ink: #d4c9fb; --indigo-on: #7a5fd1;
     --violet-bg: #3a2340; --violet-ink: #efc6f6; --violet-on: #a64cb8;
   }
+}
+
+/* Farbthemen (Version 2.0): ändern nur Grundtöne und Akzent. Periode (rot) und fruchtbare Tage (grün)
+   bleiben überall gleich, damit die Farben im Kalender immer dasselbe bedeuten. Kontraste wie bei Rosé geprüft. */
+:root[data-theme="lavendel"] {
+  --bg: #f8f6fc; --card: #ffffff; --card-2: #efebf8; --text: #241d33; --muted: #6b6380; --line: #e4def0;
+  --accent: #7446c2; --accent-ink: #ffffff; --accent-soft: #e8defa; --bar: #ddd4ee;
+  --hero-tint: #ece4fc; --news-tint: #f1eafc;
+  --shadow: 0 1px 2px rgba(40, 25, 80, .05), 0 8px 24px rgba(40, 25, 80, .07);
+}
+:root[data-theme="salbei"] {
+  --bg: #f5f8f3; --card: #ffffff; --card-2: #e9efe6; --text: #1e2a22; --muted: #5f6f63; --line: #dce6d8;
+  --accent: #3d7656; --accent-ink: #ffffff; --accent-soft: #d5e9da; --bar: #cfdcca;
+  --hero-tint: #e1efdc; --news-tint: #e8f2e3;
+  --shadow: 0 1px 2px rgba(25, 50, 30, .05), 0 8px 24px rgba(25, 50, 30, .07);
+}
+:root[data-theme="pfirsich"] {
+  --bg: #fdf7f2; --card: #ffffff; --card-2: #f6ebe2; --text: #2d1e16; --muted: #7b675b; --line: #efdfd3;
+  --accent: #b84a24; --accent-ink: #ffffff; --accent-soft: #fbdccb; --bar: #ecd5c4;
+  --hero-tint: #fde3d3; --news-tint: #fcebdd;
+  --shadow: 0 1px 2px rgba(70, 35, 15, .05), 0 8px 24px rgba(70, 35, 15, .07);
+}
+:root[data-theme="ozean"] {
+  --bg: #f4f7fb; --card: #ffffff; --card-2: #e7edf5; --text: #18212d; --muted: #5c687a; --line: #dae3ee;
+  --accent: #2563ad; --accent-ink: #ffffff; --accent-soft: #d6e5f8; --bar: #cfdae8;
+  --hero-tint: #dde9f9; --news-tint: #e5eefa;
+  --shadow: 0 1px 2px rgba(20, 40, 70, .05), 0 8px 24px rgba(20, 40, 70, .07);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="lavendel"] {
+    --bg: #14121b; --card: #1e1b28; --card-2: #292535; --text: #efeaf8; --muted: #aba3c0; --line: #363047;
+    --accent: #b69bff; --accent-ink: #1d1236; --accent-soft: #382c5a; --bar: #453c5a;
+    --hero-tint: #2b2347; --news-tint: #2a2340; --shadow: none;
+  }
+  :root[data-theme="salbei"] {
+    --bg: #101511; --card: #19201a; --card-2: #232c24; --text: #e8f0e9; --muted: #9fb2a3; --line: #303c31;
+    --accent: #86cfa2; --accent-ink: #0d2416; --accent-soft: #22402c; --bar: #3a4a3c;
+    --hero-tint: #1b3022; --news-tint: #1e2d21; --shadow: none;
+  }
+  :root[data-theme="pfirsich"] {
+    --bg: #17110e; --card: #231b16; --card-2: #2f241e; --text: #f7ece5; --muted: #bba395; --line: #3e3028;
+    --accent: #ff9b73; --accent-ink: #2d1206; --accent-soft: #4a2a1c; --bar: #4d3b30;
+    --hero-tint: #3b2317; --news-tint: #36241a; --shadow: none;
+  }
+  :root[data-theme="ozean"] {
+    --bg: #0e1218; --card: #172029; --card-2: #212b37; --text: #e6edf6; --muted: #9eabbd; --line: #2e3a48;
+    --accent: #7db3ff; --accent-ink: #0b1a30; --accent-soft: #1e3452; --bar: #354357;
+    --hero-tint: #15283e; --news-tint: #192638; --shadow: none;
+  }
+}
+/* Themenwechsel: Farben gleiten kurz über statt zu springen */
+html.theme-fade, html.theme-fade *, html.theme-fade *::before, html.theme-fade *::after {
+  transition: background-color .45s ease, color .45s ease, border-color .45s ease, fill .45s ease, stroke .45s ease, box-shadow .45s ease !important;
 }
 
 * { box-sizing: border-box; }
@@ -109,7 +164,7 @@ main {
   width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round;
 }
 .tabs button[aria-current="page"] { color: var(--accent); }
-.tabs button[aria-current="page"] svg { background: var(--period-soft); border-radius: 999px; padding: 2px 10px; width: 46px; box-sizing: content-box; height: 22px; }
+.tabs button[aria-current="page"] svg { background: var(--accent-soft); border-radius: 999px; padding: 2px 10px; width: 46px; box-sizing: content-box; height: 22px; }
 
 /* Karten + Knöpfe --------------------------------------------------------- */
 .card {
@@ -178,7 +233,7 @@ main {
 .mini-stats b { font-size: 24px; color: var(--text); }
 .note-line, .disclaimer { color: var(--muted); font-size: 13px; margin: 0 6px 14px; }
 .disclaimer { text-align: center; margin-top: 18px; }
-.backup-card { display: flex; gap: 12px; align-items: center; justify-content: space-between; background: var(--card); box-shadow: inset 0 0 0 2px var(--period-soft); }
+.backup-card { display: flex; gap: 12px; align-items: center; justify-content: space-between; background: var(--card); box-shadow: inset 0 0 0 2px var(--accent-soft); }
 .backup-card p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
 .mini-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .mini-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border-radius: 999px; font-size: 14px; font-weight: 600; }
@@ -293,6 +348,7 @@ h2.section-title + .muted { margin: 2px 4px 12px; }
   box-shadow: var(--shadow), 0 0 0 1px var(--line); display: grid; place-items: center; color: var(--accent);
 }
 .tr-title { font-weight: 750; font-size: 17px; text-align: center; }
+.tr-title:focus { outline: none; } /* Fokus nur für Bildschirmleser beim Öffnen, kein sichtbarer Rahmen */
 .week { max-width: 600px; margin: 0 auto; padding: 4px 6px 8px; }
 .wk-row { display: grid; grid-template-columns: 26px repeat(7, 1fr) 26px; gap: 4px; align-items: stretch; }
 .wk-letters span { text-align: center; font-size: 13px; font-weight: 600; color: var(--muted); padding: 4px 0; }
@@ -402,8 +458,9 @@ textarea:focus { outline: 2px solid var(--accent); }
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 body.tr-open .toast { bottom: calc(96px + env(safe-area-inset-bottom)); }
 
+/* „Bewegung reduzieren“ in iOS: keine Übergänge und keine Animationen */
 @media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
+  *, *::before, *::after { transition: none !important; animation: none !important; }
 }
 
 /* --- Version 1.2: Schlaf, Statistik-Reiter, Neuigkeiten ---------------------------- */
@@ -527,3 +584,97 @@ html.nozoom button, html.nozoom .chip, html.nozoom .day, html.nozoom .action { t
 .time-input { width: 7.5em; height: 44px; border: 0; border-radius: 12px; padding: 0 10px; background: var(--card-2); color: var(--text); font: 650 17px -apple-system, BlinkMacSystemFont, system-ui, sans-serif; text-align: center; -webkit-appearance: none; appearance: none; }
 
 .foot .made { display: inline-block; margin-top: 4px; font-size: 12px; letter-spacing: .01em; }
+
+/* --- Version 2.0: Animationen ---------------------------------------------------------- */
+:root { --ease-out: cubic-bezier(.2, .8, .2, 1); --ease-spring: cubic-bezier(.3, 1.4, .5, 1); }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+@keyframes fade { from { opacity: 0; } }
+@keyframes pop { 0% { transform: scale(1); } 40% { transform: scale(1.07); } 100% { transform: scale(1); } }
+@keyframes sheet-up { from { transform: translateY(100%); } }
+@keyframes tracker-in { from { opacity: 0; transform: translateY(28px); } }
+@keyframes tracker-out { to { opacity: 0; transform: translateY(28px); } }
+@keyframes slide-next { from { opacity: 0; transform: translateX(28px); } }
+@keyframes slide-prev { from { opacity: 0; transform: translateX(-28px); } }
+@keyframes grow-x { from { transform: scaleX(0); } }
+@keyframes grow-y { from { transform: scaleY(0); } }
+@keyframes ring-draw { from { stroke-dasharray: 0 600; } }
+@keyframes twinkle { 0%, 100% { transform: scale(1) rotate(0); } 50% { transform: scale(1.3) rotate(14deg); } }
+@keyframes sheen { from { transform: translateX(-120%); } to { transform: translateX(120%); } }
+
+/* Ansicht wechseln: die Karten gleiten nacheinander herein */
+.view.enter > * { animation: rise .42s var(--ease-out) both; }
+.view.enter > :nth-child(2) { animation-delay: .04s; }
+.view.enter > :nth-child(3) { animation-delay: .08s; }
+.view.enter > :nth-child(4) { animation-delay: .12s; }
+.view.enter > :nth-child(5) { animation-delay: .16s; }
+.view.enter > :nth-child(6) { animation-delay: .2s; }
+.view.enter > :nth-child(n+7) { animation-delay: .24s; }
+.view.enter-soft > :not(.seg-tabs) { animation: fade .28s ease both; }
+/* Zyklus-Ring zeichnet sich beim Öffnen, Balken wachsen */
+.view.enter .ring .ring-period, .view.enter .ring .ring-fertile { animation: ring-draw .9s var(--ease-out) .12s both; }
+.view.enter .ring-marker-g, .view.enter .ring-dot, .view.enter .ring-today { animation: fade .4s ease .5s both; }
+.view.enter .c-len, .view.enter-soft .c-len, .view.enter .p-bar span, .view.enter-soft .p-bar span { transform-origin: left center; animation: grow-x .7s var(--ease-out) .1s both; }
+.view.enter .bar, .view.enter-soft .bar { transform-origin: center bottom; animation: grow-y .6s var(--ease-out) .1s both; }
+
+/* Tracking-Bildschirm gleitet herein und wieder hinaus, Dialoge kommen von unten */
+.tracker { animation: tracker-in .34s var(--ease-out); }
+.tracker.closing { animation: tracker-out .2s ease-in forwards; pointer-events: none; }
+.tr-custom:not([hidden]) { animation: fade .2s ease; }
+.tr-custom:not([hidden]) .tr-custom-card { animation: sheet-up .32s var(--ease-out); }
+
+/* Kalender blättert seitlich */
+.cal-card { overflow: hidden; }
+.cal-grid.days.slide-next, .year-grid.slide-next { animation: slide-next .3s var(--ease-out); }
+.cal-grid.days.slide-prev, .year-grid.slide-prev { animation: slide-prev .3s var(--ease-out); }
+
+/* Antippen fühlt sich an wie ein echter Knopf */
+.btn, .icon-btn, .round-btn, .mini-month, button.card, .day, .wk-day { transition: transform .14s var(--ease-out), background-color .2s, color .2s, box-shadow .2s; }
+.btn:active:not(:disabled), .icon-btn:active:not(:disabled), .round-btn:active { transform: scale(.96); }
+button.card:active { transform: scale(.985); }
+.day:active:not(.blank) { transform: scale(.9); }
+.wk-day:active { transform: scale(.95); }
+.chip.pop, .action.pop { animation: pop .34s var(--ease-spring); }
+
+/* Rad: Markierung gleitet (per Skript), heute-Punkt blendet weich */
+.ring .ring-today { transition: opacity .2s; }
+.ring .ring-today.off { opacity: 0; }
+
+/* Neuigkeiten: kurzer Glanz und funkelnder Stern */
+.news-card { position: relative; overflow: hidden; }
+.news-card::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .5) 50%, transparent 65%);
+  animation: sheen 1.6s ease .5s 1 both;
+}
+@media (prefers-color-scheme: dark) { .news-card::after { background: linear-gradient(105deg, transparent 35%, rgba(255, 255, 255, .07) 50%, transparent 65%); } }
+.news-card .spark { display: inline-block; animation: twinkle 1.1s ease-in-out .3s 3; }
+
+/* Aufklappen unter „Mehr“: Inhalt blendet ein (nur beim Antippen, nicht beim Neuzeichnen) */
+details.opening > :not(summary) { animation: rise .3s var(--ease-out) both; }
+
+.toast { transition: opacity .25s ease, transform .4s var(--ease-spring); }
+
+/* --- Version 2.0: Farbthema wählen ------------------------------------------------------ */
+.theme-pick { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; padding: 2px 0 12px; }
+.swatch { position: relative; display: flex; flex-direction: column; align-items: center; gap: 7px; font-size: 12px; font-weight: 650; color: var(--muted); cursor: pointer; text-align: center; min-width: 0; }
+.swatch input { position: absolute; top: 0; left: 50%; width: 44px; height: 44px; margin: 0 0 0 -22px; opacity: 0; cursor: pointer; }
+.swatch i {
+  width: 44px; height: 44px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--sw2) 0 46%, var(--sw) 46%);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .08);
+  transition: transform .25s var(--ease-spring), box-shadow .2s;
+}
+.swatch input:checked + i { box-shadow: 0 0 0 3px var(--card), 0 0 0 5px var(--sw); transform: scale(1.06); }
+.swatch input:checked ~ span { color: var(--text); }
+.swatch input:focus-visible + i { outline: 3px solid var(--accent); outline-offset: 5px; }
+
+/* --- Version 2.0: Was dich erwartet ----------------------------------------------------- */
+.expect-card { background: linear-gradient(160deg, var(--hero-tint), var(--card) 58%); }
+.expect-card .card-head small { color: var(--muted); font-weight: 600; font-size: 13px; }
+.expect { list-style: none; margin: 6px 0 0; padding: 0; }
+.expect li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.expect li:first-child { border-top: 0; padding-top: 2px; }
+.expect .mini-chip { min-width: 0; overflow-wrap: anywhere; }
+.ex-sub { color: var(--muted); font-size: 13px; font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ex-line { margin: 10px 0 0; font-size: 14px; }
+.ex-foot { margin: 10px 0 0; font-size: 12px; color: var(--muted); }

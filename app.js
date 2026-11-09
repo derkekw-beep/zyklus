@@ -4,6 +4,7 @@ import * as S from './sleep.js';
 import { NOTES, APP_VERSION, FEATURES } from './notes.js';
 import { parseClue, looksLikeClue, readImportFile, mergeDays } from './importer.js';
 import { buildIcs, reminderEvents } from './ics.js';
+import { expectations } from './insights.js';
 
 // ---------------------------------------------------------------------------
 // Grundlagen
@@ -17,6 +18,15 @@ const STEPS = { sleepGoal: 15 };
 const PHASES = [['periode', 'Periode', '🩸'], ['follikel', 'Follikelphase', '🌱'], ['eisprung', 'Fruchtbare Tage', '🥚'], ['luteal', 'Lutealphase', '🌙']];
 const PILL_MAX = 40;
 const FUTURE_MSG = 'Für die Zukunft gibt es nur die Vorhersage';
+// Farbthemen: id, Name, Akzent + Farbton (für die Auswahl), Hintergrund hell / dunkel (Statusleiste)
+const THEMES = [
+  ['rose', 'Rosé', '#c8336a', '#fde7ee', '#fbf7f4', '#161114'],
+  ['lavendel', 'Lavendel', '#7446c2', '#ece4fc', '#f8f6fc', '#14121b'],
+  ['salbei', 'Salbei', '#3d7656', '#e1efdc', '#f5f8f3', '#101511'],
+  ['pfirsich', 'Pfirsich', '#b84a24', '#fde3d3', '#fdf7f2', '#17110e'],
+  ['ozean', 'Ozean', '#2563ad', '#dde9f9', '#f4f7fb', '#0e1218'],
+];
+const THEME = Object.fromEntries(THEMES.map(t => [t[0], t]));
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -58,7 +68,7 @@ function freshData() {
     app: 'zyklus',
     version: 1,
     days: {},
-    settings: { name: '', cycleLength: 28, periodLength: 5, lutealLength: 14, sleepGoal: 480, showFertile: true, hiddenCats: [], customTags: [], pillName: '', zoomLock: true,
+    settings: { name: '', cycleLength: 28, periodLength: 5, lutealLength: 14, sleepGoal: 480, showFertile: true, hiddenCats: [], customTags: [], pillName: '', zoomLock: true, theme: 'rose',
       remind: { period: true, fertile: false, pill: false, pillTime: 21 * 60, track: false, trackTime: 20 * 60 + 30 } },
     meta: { created: new Date().toISOString(), lastBackup: null, seenVersion: null, sleepStart: null, sleepPill: false, sleepPillAt: null, pillSince: C.toIso(C.todayNum()), icsExport: null },
   };
@@ -120,6 +130,7 @@ function normalize(o) {
   }
   if (typeof s.showFertile === 'boolean') d.settings.showFertile = s.showFertile;
   if (typeof s.zoomLock === 'boolean') d.settings.zoomLock = s.zoomLock;
+  if (typeof s.theme === 'string' && THEME[s.theme]) d.settings.theme = s.theme;
   if (s.remind && typeof s.remind === 'object') {
     for (const k of ['period', 'fertile', 'pill', 'track']) if (typeof s.remind[k] === 'boolean') d.settings.remind[k] = s.remind[k];
     for (const k of ['pillTime', 'trackTime']) if (S.isTime(s.remind[k])) d.settings.remind[k] = s.remind[k];
@@ -208,9 +219,48 @@ function checkNewDay() {
 function commit() { const ok = save(); refresh(); return ok; }
 
 // ---------------------------------------------------------------------------
+// Bewegung und Farben
+// ---------------------------------------------------------------------------
+// Animationen nur, wenn in iOS nicht „Bewegung reduzieren“ eingeschaltet ist
+const motionOk = () => !matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Eine Ansicht kommt herein: Karten gleiten nacheinander ein – nur beim Wechseln, nicht bei jedem Neuzeichnen
+function animateEnter(el, cls = 'enter') {
+  if (!el || !motionOk()) return;
+  el.classList.remove('enter', 'enter-soft');
+  void el.offsetWidth; // Animation neu starten
+  el.classList.add(cls);
+  clearTimeout(el._enterT);
+  el._enterT = setTimeout(() => el.classList.remove(cls), 1100);
+}
+function pop(el) {
+  if (!el || !motionOk()) return;
+  el.classList.remove('pop');
+  void el.offsetWidth;
+  el.classList.add('pop');
+}
+let appliedTheme = null;
+let themeFadeT = null;
+function applyTheme(fade = false) {
+  const id = THEME[state.settings.theme] ? state.settings.theme : 'rose';
+  if (id === appliedTheme) return;
+  const root = document.documentElement;
+  if (fade && motionOk()) {
+    root.classList.add('theme-fade');
+    clearTimeout(themeFadeT);
+    themeFadeT = setTimeout(() => root.classList.remove('theme-fade'), 600);
+  }
+  if (id === 'rose') root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme', id);
+  // Statusleiste/Browserleiste in der Hintergrundfarbe des Themas
+  for (const m of $$('meta[name="theme-color"]')) m.setAttribute('content', /dark/.test(m.getAttribute('media') || '') ? THEME[id][5] : THEME[id][4]);
+  appliedTheme = id;
+}
+
+// ---------------------------------------------------------------------------
 // Ansichten
 // ---------------------------------------------------------------------------
 function render() {
+  applyTheme();
   for (const [k, sel] of Object.entries(VIEWS)) $(sel).hidden = k !== ui.tab;
   $$('.tabs button').forEach(b => b.setAttribute('aria-current', b.dataset.tab === ui.tab ? 'page' : 'false'));
   $('#title').textContent = ui.tab === 'home' ? homeTitle() : TITLES[ui.tab];
@@ -219,14 +269,18 @@ function render() {
 
 function switchTab(tab) {
   if (tab !== 'home') ui.wheelDay = null; // zurück auf „Heute“ zeigt wieder heute
+  const changed = tab !== ui.tab;
   ui.tab = tab;
   render();
   window.scrollTo(0, 0);
+  if (changed) animateEnter($(VIEWS[tab]));
 }
 
 // --- Heute -----------------------------------------------------------------
 // --- Zyklus-Rad: zum Drehen, zeigt jeden Tag mit Zyklustag und Phase ------------------------
-const wheel = { dragging: false, lastAng: 0, startAng: 0, acc: 0, moved: 0, el: null, cyc: null };
+// acc: Bruchteil eines Tages, um den der Finger über den gewählten Tag hinaus gedreht hat (−0,5 … 0,5)
+// angle: aktuell gezeichneter Winkel der Markierung · key/host: welcher Zyklus gerade gezeichnet ist
+const wheel = { dragging: false, lastAng: 0, startAng: 0, acc: 0, moved: 0, el: null, cyc: null, angle: 0, raf: 0, key: '', host: null };
 const wheelSel = () => (ui.wheelDay === null ? today : ui.wheelDay);
 function wheelBounds() {
   return { min: A.periods[0].start, max: A.futureStart + C.AHEAD * A.cycleLen - 1 };
@@ -265,12 +319,45 @@ function wheelSvg(cyc, sel) {
       marks += `<circle class="ring-dot" cx="${x}" cy="${y}" r="2.6"/>`;
     }
   }
-  if (sel !== today && today >= cyc.start && today < cyc.start + L) {
+  if (today >= cyc.start && today < cyc.start + L) {
     const [x, y] = pos(rel(today), R);
-    marks += `<circle class="ring-today" cx="${x}" cy="${y}" r="5"/>`;
+    marks += `<circle class="ring-today${sel === today ? ' off' : ''}" cx="${x}" cy="${y}" r="5"/>`;
   }
-  const [mx, my] = pos(rel(sel), R);
-  return `<svg class="ring" viewBox="0 0 200 200" aria-hidden="true"><g transform="rotate(-90 100 100)">${g}</g>${marks}<circle class="ring-marker" cx="${mx}" cy="${my}" r="10"/></svg>`;
+  // Markierung oben (12 Uhr) gezeichnet und per Drehung platziert – so kann sie stufenlos gleiten
+  const ang = markerAngle(cyc, rel(sel) + 0.5);
+  return `<svg class="ring" viewBox="0 0 200 200" aria-hidden="true"><g transform="rotate(-90 100 100)">${g}</g>${marks}<g class="ring-marker-g" transform="rotate(${ang.toFixed(2)} 100 100)"><circle class="ring-marker" cx="100" cy="${100 - R}" r="10"/></g></svg>`;
+}
+// Winkel (Grad, im Uhrzeigersinn ab 12 Uhr) für eine Stelle im Zyklus; pos in Tagen ab Zyklusbeginn
+const markerAngle = (cyc, pos) => (pos / cyc.len) * 360;
+function setMarkerAngle(a) {
+  wheel.angle = a;
+  const g = wheel.host && wheel.host.querySelector('.ring-marker-g');
+  if (g) g.setAttribute('transform', `rotate(${a.toFixed(2)} 100 100)`);
+}
+// Markierung zum Ziel gleiten lassen (ease-out), ohne Bewegung oder bei „Bewegung reduzieren“ direkt setzen
+function moveMarker(target, animate) {
+  cancelAnimationFrame(wheel.raf);
+  const from = wheel.angle;
+  if (!animate || !motionOk() || Math.abs(target - from) < 0.05) { setMarkerAngle(target); return; }
+  const t0 = performance.now();
+  const dur = Math.min(320, 140 + Math.abs(target - from) * 1.2);
+  const step = now => {
+    const p = Math.min(1, (now - t0) / dur);
+    setMarkerAngle(from + (target - from) * (1 - Math.pow(1 - p, 3)));
+    if (p < 1) wheel.raf = requestAnimationFrame(step);
+  };
+  wheel.raf = requestAnimationFrame(step);
+}
+// Beim Drehen: Markierung folgt dem Finger stufenlos
+function followFinger() {
+  if (!wheel.cyc) return;
+  cancelAnimationFrame(wheel.raf);
+  setMarkerAngle(markerAngle(wheel.cyc, wheelSel() - wheel.cyc.start + 0.5 + wheel.acc));
+}
+// Beim Loslassen: weich auf die Mitte des gewählten Tages einrasten
+function snapWheel() {
+  wheel.acc = 0;
+  if (wheel.cyc) moveMarker(markerAngle(wheel.cyc, wheelSel() - wheel.cyc.start + 0.5), true);
 }
 
 function wheelInfo(cyc, info, sel, b) {
@@ -308,7 +395,9 @@ function wheelInfo(cyc, info, sel, b) {
     ${sel <= today ? '<button class="link wheel-open" data-act="wheel-open">Diesen Tag ansehen / bearbeiten ›</button>' : ''}`;
 }
 
-function renderWheel() {
+// animate: Markierung gleitet zum neuen Tag (Pfeile, Antippen). Bleibt der Zyklus derselbe, wird nur
+// die Markierung bewegt statt das ganze Rad neu zu zeichnen – flüssiger beim Drehen.
+function renderWheel(animate = false) {
   const host = $('#wheel');
   if (!host || !A.hasData) return;
   const b = wheelBounds();
@@ -321,11 +410,22 @@ function renderWheel() {
   ui.wheelDay = sel === today ? null : sel;
   const info = C.dayInfoAt(sel, cyc);
   wheel.cyc = cyc;
-  host.innerHTML = `${wheelSvg(cyc, sel)}<div class="ring-center">
+  const key = [cyc.start, cyc.len, cyc.kind, cyc.pEnd, cyc.predFrom, cyc.win ? cyc.win.ov : '-'].join('|');
+  if (wheel.host === host && wheel.key === key && host.querySelector('.ring-marker-g')) {
+    const td = host.querySelector('.ring-today');
+    if (td) td.classList.toggle('off', sel === today);
+    moveMarker(markerAngle(cyc, sel - cyc.start + 0.5), animate);
+  } else {
+    cancelAnimationFrame(wheel.raf);
+    host.innerHTML = `${wheelSvg(cyc, sel)}<div class="ring-center"></div>`;
+    wheel.host = host;
+    wheel.key = key;
+    wheel.angle = markerAngle(cyc, sel - cyc.start + 0.5);
+  }
+  host.querySelector('.ring-center').innerHTML = `
       <span class="rc-small">${sel === today ? 'Zyklustag' : esc(fShort(sel))}</span>
       <span class="rc-big">${info.day}</span>
-      <span class="rc-small">${sel === today ? '' : 'Zyklustag · '}von ${cyc.kind === 'past' ? '' : 'ca. '}${cyc.len}</span>
-    </div>`;
+      <span class="rc-small">${sel === today ? '' : 'Zyklustag · '}von ${cyc.kind === 'past' ? '' : 'ca. '}${cyc.len}</span>`;
   host.setAttribute('aria-valuetext', `${fLong(sel)}, Zyklustag ${info.day}`);
   host.setAttribute('aria-valuenow', String(sel - today));
   host.setAttribute('aria-valuemin', String(b.min - today));
@@ -333,12 +433,12 @@ function renderWheel() {
   host.classList.toggle('moved', sel !== today);
   $('#wheel-info').innerHTML = wheelInfo(cyc, info, sel, b);
 }
-function setWheelDay(n) {
+function setWheelDay(n, animate = false) {
   const b = wheelBounds();
   n = Math.min(b.max, Math.max(b.min, n));
   if (n === wheelSel()) return;
   ui.wheelDay = n === today ? null : n;
-  renderWheel();
+  renderWheel(animate);
 }
 
 function homeStatus() {
@@ -452,9 +552,49 @@ function sleepCard() {
 function newsCard() {
   const n = NOTES[0];
   return `<div class="card news-card">
-    <div class="card-head"><h3>✨ Neu in Version ${esc(n.v)}</h3><button class="link" data-act="news-ok">OK</button></div>
+    <div class="card-head"><h3><span class="spark" aria-hidden="true">✨</span> Neu in Version ${esc(n.v)}</h3><button class="link" data-act="news-ok">OK</button></div>
     <ul class="plain">${n.items.slice(0, 4).map(i => `<li>${esc(i)}</li>`).join('')}</ul>
     <button class="link" data-act="news-all">Alle Neuigkeiten ansehen ›</button>
+  </div>`;
+}
+
+// --- Was dich erwartet: aus den eigenen Einträgen früherer Zyklen -------------------------------
+function tagInfo(cat, id) {
+  if (cat === 'custom') return { label: id, emoji: '🏷️', tone: 'violet' };
+  const c = CAT[cat];
+  const o = c && OPT[cat] && OPT[cat][id];
+  if (!o) return null;
+  return { label: PREFIX.has(cat) ? `${c.name}: ${o.label}` : o.label, emoji: o.emoji, tone: c.tone };
+}
+const PHASE_WHEN = { periode: 'Während der Periode', follikel: 'Nach der Periode', eisprung: 'Rund um den Eisprung', luteal: 'In der zweiten Zyklushälfte' };
+function expectSleepLine() {
+  const ph = C.phaseOf(today, A);
+  if (!ph || (ph === 'eisprung' && !state.settings.showFertile)) return '';
+  const nights = sleepNights(); // Eintrag von heute = die vergangene Nacht, also auch abgeschlossen
+  const all = nights.filter(x => x.sleep);
+  if (all.length < 10) return '';
+  const v = S.averageBy(nights, n => C.phaseOf(n, A), 4)[ph];
+  if (!v) return '';
+  const diff = v.avg - Math.round(all.reduce((s, x) => s + x.sleep, 0) / all.length);
+  if (Math.abs(diff) < 20) return '';
+  return `😴 ${PHASE_WHEN[ph]} schläfst du im Schnitt ${fmtSleep(Math.abs(diff))} ${diff < 0 ? 'weniger' : 'länger'} als sonst.`;
+}
+function expectCard() {
+  if (!A.hasData) return '';
+  const ex = expectations(state, A, today);
+  const rows = ex.items.map(it => {
+    const t = tagInfo(it.cat, it.id);
+    if (!t) return '';
+    return `<li><span class="mini-chip tone-${t.tone}"><span class="em" aria-hidden="true">${t.emoji}</span>${esc(t.label)}</span><span class="ex-sub">in ${it.k} von ${it.n} Zyklen</span></li>`;
+  }).join('');
+  const sleep = expectSleepLine();
+  if (!rows && !sleep) return '';
+  const when = ex.mode === 'period' ? 'wenn die Periode kommt' : 'nächste 3 Tage';
+  return `<div class="card expect-card">
+    <div class="card-head"><h3>🌤️ Was dich erwartet</h3><small>${when}</small></div>
+    ${rows ? `<p class="muted small">${ex.mode === 'period' ? 'Zu Beginn deiner Periode hattest du oft:' : 'An dieser Stelle im Zyklus hattest du oft:'}</p><ul class="expect">${rows}</ul>` : ''}
+    ${sleep ? `<p class="ex-line">${esc(sleep)}</p>` : ''}
+    <p class="ex-foot">Aus deinen eigenen Einträgen früherer Zyklen – keine medizinische Vorhersage. <button class="link" data-act="open-patterns">Alle Muster ›</button></p>
   </div>`;
 }
 
@@ -501,6 +641,7 @@ function renderHome() {
   if (icsOutdated()) {
     out.push(`<div class="card remind-card"><div><b>🔔 Neue Vorhersage</b><p>Die Kalender-Erinnerung für die nächste Periode (${esc(fShort(A.nextStart))}) ist noch nicht in deinem Kalender.</p></div><button class="btn small primary" data-act="ics-export-next">Übernehmen</button></div>`);
   }
+  out.push(expectCard());
 
   if (e) {
     out.push(`<div class="card"><div class="card-head"><h3>Heute eingetragen</h3><button class="link" data-act="track-today">Bearbeiten</button></div>${entrySummary(e)}</div>`);
@@ -646,11 +787,18 @@ function renderCal() {
     </div>`;
 }
 function shiftMonth(delta) {
-  if (ui.calView === 'year') { ui.y += delta; renderCal(); return; } // in der Jahresansicht: ganzes Jahr weiter
+  if (ui.calView === 'year') { ui.y += delta; renderCal(); slideCal(delta); return; } // in der Jahresansicht: ganzes Jahr weiter
   const d = new Date(Date.UTC(ui.y, ui.m + delta, 1));
   ui.y = d.getUTCFullYear();
   ui.m = d.getUTCMonth();
   renderCal();
+  slideCal(delta);
+}
+// Kalender blättert in die Richtung, in die es weitergeht
+function slideCal(delta) {
+  if (!delta || !motionOk()) return;
+  const g = $('#view-cal .cal-grid.days') || $('#view-cal .year-grid');
+  if (g) g.classList.add(delta > 0 ? 'slide-next' : 'slide-prev');
 }
 
 // --- Statistik ---------------------------------------------------------------
@@ -888,6 +1036,10 @@ function renderSettings() {
       <label class="row"><div><div class="row-title">Zoomen sperren</div><div class="row-sub">Kein versehentliches Reinzoomen mit zwei Fingern oder Doppeltippen.</div></div>
         <span class="switch"><input type="checkbox" data-setting="zoomLock" ${s.zoomLock ? 'checked' : ''}><span></span></span>
       </label>
+      <div class="row"><div><div class="row-title">Farbthema</div><div class="row-sub"><span id="theme-name">${esc((THEME[s.theme] || THEME.rose)[1])}</span> · passt sich hell und dunkel an</div></div></div>
+      <div class="theme-pick" role="radiogroup" aria-label="Farbthema">
+        ${THEMES.map(([id, name, acc, tint]) => `<label class="swatch" style="--sw:${acc};--sw2:${tint}"><input type="radio" name="theme" value="${id}" ${(THEME[s.theme] ? s.theme : 'rose') === id ? 'checked' : ''} aria-label="${esc(name)}"><i aria-hidden="true"></i><span>${esc(name)}</span></label>`).join('')}
+      </div>
     </div>
     <div class="card"><h3>🔮 Vorhersage</h3>
       ${stepper('cycleLength', 'Zykluslänge', A.usedCycles ? `Gerade nicht im Einsatz – die App nutzt deinen Schnitt (${A.cycleLen} Tage).` : 'Gilt, bis ein ganzer Zyklus eingetragen ist.')}
@@ -955,7 +1107,10 @@ function openTracker(n) {
   tr.addingTag = false;
   $('#tr-search').value = '';
   $('#tr-custom').hidden = true;
-  $('#tracker').hidden = false;
+  const trEl = $('#tracker');
+  clearTimeout(trCloseT); // falls er gerade noch hinausgleitet
+  trEl.classList.remove('closing');
+  trEl.hidden = false; // die Einblend-Animation startet von selbst (CSS)
   document.body.classList.add('tr-open');
   renderTracker();
   $('#tr-scroll').scrollTop = 0;
@@ -967,9 +1122,16 @@ function loadDay(n) {
   tr.draft = entry(n);
   tr.dirty = false;
 }
+let trCloseT = null;
 function hideTracker() {
   if (pendingReload && !reloading) { reloading = true; setTimeout(() => location.reload(), 300); }
-  $('#tracker').hidden = true;
+  const trEl = $('#tracker');
+  if (motionOk()) {
+    // kurz hinausgleiten lassen; währenddessen nimmt er keine Tipps mehr an (pointer-events: none)
+    trEl.classList.add('closing');
+    clearTimeout(trCloseT);
+    trCloseT = setTimeout(() => { trEl.hidden = true; trEl.classList.remove('closing'); }, 200);
+  } else trEl.hidden = true;
   document.body.classList.remove('tr-open');
   tr.n = null;
   tr.draft = null;
@@ -1173,6 +1335,7 @@ function toggleChip(catId, id) {
   rerenderSection(catId);
   if (c.clears) rerenderSection(c.clears);
   if (catId === 'period' || catId === 'spot') renderWeek();
+  if ((tr.draft.tags[catId] || []).includes(id)) pop($(`#tr-body [data-chip="${catId}:${id}"]`));
 }
 function toggleCustomTag(name) {
   const i = tr.draft.custom.indexOf(name);
@@ -1180,6 +1343,7 @@ function toggleCustomTag(name) {
   else tr.draft.custom.push(name);
   markDirty();
   rerenderSection('custom');
+  if (i < 0) pop($$('#tr-body [data-ctag]').find(b => b.dataset.ctag === name));
 }
 function addCustomTag() {
   const inp = $('#tag-input');
@@ -1531,14 +1695,21 @@ const ACTIONS = {
   'toggle-today'() {
     const on = togglePeriod(today);
     if (on !== null) toast(on ? 'Heute als Periodentag eingetragen' : 'Periode für heute entfernt');
+    if (on) pop($('[data-act="toggle-today"]'));
   },
   'track-today'() { openTracker(today); },
   'cal-prev'() { shiftMonth(-1); },
   'cal-next'() { shiftMonth(1); },
-  'cal-today'() { ui.y = D(today).getUTCFullYear(); ui.m = D(today).getUTCMonth(); renderCal(); },
-  'cal-year-view'() { ui.calView = 'year'; renderCal(); window.scrollTo(0, 0); },
-  'cal-month-view'() { ui.calView = 'month'; renderCal(); },
-  'cal-open-month'(el) { ui.m = Number(el.dataset.m); ui.calView = 'month'; renderCal(); window.scrollTo(0, 0); },
+  'cal-today'() {
+    const before = ui.calView === 'year' ? ui.y * 12 : ui.y * 12 + ui.m;
+    ui.y = D(today).getUTCFullYear();
+    ui.m = D(today).getUTCMonth();
+    renderCal();
+    slideCal((ui.calView === 'year' ? ui.y * 12 : ui.y * 12 + ui.m) - before);
+  },
+  'cal-year-view'() { ui.calView = 'year'; renderCal(); window.scrollTo(0, 0); animateEnter($('#view-cal'), 'enter-soft'); },
+  'cal-month-view'() { ui.calView = 'month'; renderCal(); animateEnter($('#view-cal'), 'enter-soft'); },
+  'cal-open-month'(el) { ui.m = Number(el.dataset.m); ui.calView = 'month'; renderCal(); window.scrollTo(0, 0); animateEnter($('#view-cal'), 'enter-soft'); },
   'mark'() { ui.mark = !ui.mark; renderCal(); },
   'tr-close'() { leaveDay(hideTracker); },
   'tr-save'() {
@@ -1562,7 +1733,12 @@ const ACTIONS = {
     markDirty();
     rerenderSection('sleep');
   },
-  'stats-tab'(el) { ui.statsTab = el.dataset.v; renderStats(); },
+  'stats-tab'(el) {
+    if (ui.statsTab === el.dataset.v) return;
+    ui.statsTab = el.dataset.v;
+    renderStats();
+    animateEnter($('#view-stats'), 'enter-soft');
+  },
   'news-ok'() { state.meta.seenVersion = APP_VERSION; save(); renderHome(); },
   'news-all'() {
     state.meta.seenVersion = APP_VERSION;
@@ -1592,9 +1768,10 @@ const ACTIONS = {
     renderHome();
   },
   'sleep-stop'() { stopSleep(); },
-  'wheel-prev'() { setWheelDay(wheelSel() - 1); },
-  'wheel-next'() { setWheelDay(wheelSel() + 1); },
-  'wheel-today'() { setWheelDay(today); },
+  'wheel-prev'() { setWheelDay(wheelSel() - 1, true); },
+  'wheel-next'() { setWheelDay(wheelSel() + 1, true); },
+  'wheel-today'() { setWheelDay(today, true); },
+  'open-patterns'() { ui.statsTab = 'patterns'; switchTab('stats'); },
   'wheel-open'() { openTracker(wheelSel()); },
   'check-update'() {
     toast('Suche nach Updates …');
@@ -1667,6 +1844,13 @@ document.addEventListener('change', ev => {
     state.settings[t.dataset.setting] = t.checked;
     if (t.dataset.setting === 'zoomLock') applyZoomLock();
     commit();
+  } else if (t.name === 'theme' && THEME[t.value]) {
+    // nicht alles neu zeichnen: die Farben gleiten über, die Auswahl bleibt, wo sie ist
+    state.settings.theme = t.value;
+    save();
+    applyTheme(true);
+    const nm = $('#theme-name');
+    if (nm) nm.textContent = THEME[t.value][1];
   } else if (t.dataset.catToggle) {
     const id = t.dataset.catToggle;
     const hidden = new Set(state.settings.hiddenCats);
@@ -1744,22 +1928,42 @@ document.addEventListener('pointermove', ev => {
   wheel.lastAng = ang;
   wheel.moved += Math.abs(d);
   wheel.acc += (d / (2 * Math.PI)) * wheel.cyc.len;
-  const steps = Math.trunc(wheel.acc);
+  // ab einem halben Tag gilt der nächste Tag als gewählt; der Rest bleibt als stufenloser Versatz
+  const steps = Math.round(wheel.acc);
   if (steps) {
+    const want = wheelSel() + steps;
     wheel.acc -= steps;
-    setWheelDay(wheelSel() + steps);
+    setWheelDay(want);
+    if (wheelSel() !== want) wheel.acc = 0; // am Anfang/Ende der Daten: nicht weiterdrehen
   }
+  followFinger();
 });
 document.addEventListener('pointerup', () => {
   if (!wheel.dragging) return;
   wheel.dragging = false;
   if (wheel.moved < 0.08) {
-    // kurzer Tipp auf den Ring: direkt zu diesem Tag springen
+    // kurzer Tipp auf den Ring: zu diesem Tag gleiten
+    wheel.acc = 0;
     const frac = ((wheel.startAng + Math.PI / 2) / (2 * Math.PI) + 1) % 1;
-    setWheelDay(wheel.cyc.start + Math.min(wheel.cyc.len - 1, Math.floor(frac * wheel.cyc.len)));
-  }
+    setWheelDay(wheel.cyc.start + Math.min(wheel.cyc.len - 1, Math.floor(frac * wheel.cyc.len)), true);
+  } else snapWheel();
 });
-document.addEventListener('pointercancel', () => { wheel.dragging = false; });
+document.addEventListener('pointercancel', () => {
+  if (!wheel.dragging) return;
+  wheel.dragging = false;
+  snapWheel();
+});
+
+// Aufklappen per Antippen: Inhalt gleitet herein (nur dann – nicht beim Neuzeichnen offener Bereiche)
+document.addEventListener('click', ev => {
+  const sum = ev.target.closest && ev.target.closest('details > summary');
+  if (!sum || !motionOk()) return;
+  const d = sum.parentElement;
+  if (d.open) return; // wird gerade zugeklappt
+  d.classList.add('opening');
+  clearTimeout(d._openT);
+  d._openT = setTimeout(() => d.classList.remove('opening'), 500);
+}, true);
 
 // Auf- und Zuklappen unter „Mehr“ merken, damit Neuzeichnen nichts zuklappt
 document.addEventListener('toggle', ev => {
@@ -1774,7 +1978,7 @@ document.addEventListener('keydown', ev => {
   if (ev.key === 'Enter' && ev.target.id === 'tag-input') { ev.preventDefault(); addCustomTag(); }
   if (ev.target.id === 'wheel' && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
     ev.preventDefault();
-    setWheelDay(wheelSel() + (ev.key === 'ArrowRight' ? 1 : -1));
+    setWheelDay(wheelSel() + (ev.key === 'ArrowRight' ? 1 : -1), true);
   }
   if (ev.key === 'Escape' && tr.n !== null) {
     if (!$('#tr-ask').hidden) answerAsk('stay');
@@ -1864,6 +2068,7 @@ applyZoomLock();
 settleSleep();
 if (needsSave && storageOk) save();
 render();
+animateEnter($(VIEWS[ui.tab])); // Startbild: Karten gleiten herein, der Ring zeichnet sich
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   // Welcher Service Worker hat diese Seite ausgeliefert? Neu laden nur, wenn danach ein ANDERER aktiv wird
   // (nicht bei der Erstinstallation) – und nie mitten im Tracken: dann beim Schließen des Trackers.
@@ -1894,4 +2099,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
 // nur für automatische Tests
-window.__zyklus = { get state() { return state; }, get analysis() { return A; }, get wheelDay() { return wheelSel(); } };
+window.__zyklus = {
+  get state() { return state; }, get analysis() { return A; }, get wheelDay() { return wheelSel(); },
+  get wheelAngle() { return wheel.angle; }, get wheelCycle() { return wheel.cyc && { start: wheel.cyc.start, len: wheel.cyc.len }; },
+};

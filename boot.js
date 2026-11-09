@@ -1,4 +1,14 @@
-// Notbremse: Startet die App nicht (z. B. Datei fehlt nach einem Update), nach 6 Sekunden einen Hinweis
+// Läuft vor allem anderen (ohne defer im <head>), deshalb nur einfaches JavaScript.
+// 1) Farbthema sofort setzen, damit beim Start nicht kurz die Standardfarben aufblitzen.
+(function () {
+  try {
+    var d = JSON.parse(localStorage.getItem('zyklus-daten') || 'null');
+    var t = d && d.settings && d.settings.theme;
+    if (typeof t === 'string' && /^[a-z]{2,20}$/.test(t) && t !== 'rose') document.documentElement.setAttribute('data-theme', t);
+  } catch (e) { /* dann eben Standardfarben – app.js setzt das Thema gleich danach noch einmal */ }
+})();
+
+// 2) Notbremse: Startet die App nicht (z. B. Datei fehlt nach einem Update), nach 6 Sekunden einen Hinweis
 // mit „App neu laden“ zeigen. Der Knopf setzt nur den App-Code (Service Worker + Cache) zurück –
 // Einträge im localStorage bleiben unangetastet.
 (function () {

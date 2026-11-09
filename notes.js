@@ -3,6 +3,16 @@
 
 export const NOTES = [
   {
+    v: '2.0',
+    date: '09.11.2026',
+    items: [
+      'Fünf Farbthemen: Rosé, Lavendel, Salbei, Pfirsich und Ozean – unter „Mehr“ → Persönlich, hell und dunkel',
+      'Neue Karte „Was dich erwartet“: was du in früheren Zyklen an genau dieser Stelle oft hattest',
+      'Weichere Bewegungen: Das Rad gleitet und rastet sanft ein, Ansichten und Tracking gleiten herein',
+      'Ist in iOS „Bewegung reduzieren“ eingeschaltet, bleibt alles ruhig',
+    ],
+  },
+  {
     v: '1.9',
     date: '09.11.2026',
     items: [
@@ -115,6 +125,8 @@ export const FEATURES = [
   ['😴', 'Schlaf', 'Schlafen gehen / Aufgewacht per Tipp, Schlafziel, Schlafdefizit der Woche, Schlafrhythmus und Schlaf je Zyklusphase.'],
   ['💊', 'Schlaftabletten', 'Wie oft, wann eingenommen, Schlaf mit und ohne Tablette und je Zyklusphase.'],
   ['🎡', 'Zyklus-Rad', 'Auf „Heute“ den Ring drehen: Zyklustag, Phase und Einträge für jeden Tag, auch vergangene und kommende Zyklen.'],
+  ['🌤️', 'Was dich erwartet', 'Auf „Heute“: was du in früheren Zyklen an genau dieser Stelle oft hattest, z. B. Krämpfe zu Beginn der Periode. Nur was dort deutlich häufiger vorkommt als sonst, ab 3 Zyklen mit Einträgen.'],
+  ['🎨', 'Farbthemen', 'Rosé, Lavendel, Salbei, Pfirsich oder Ozean – jeweils hell und dunkel, passend zur iPhone-Einstellung.'],
   ['📅', 'Kalender', 'Periode, Vorhersage, fruchtbare Tage, Eisprung und alle Einträge auf einen Blick. Vergangene Perioden schnell nachtragen.'],
   ['📊', 'Statistik', 'Zyklusverlauf, Durchschnittswerte und Muster – zum Beispiel an welchem Zyklustag Krämpfe meistens auftreten.'],
   ['🔔', 'Erinnerungen', 'Termine mit Erinnerung im iPhone-Kalender: nächste Periode, fruchtbare Tage, Pille und Tracken.'],
