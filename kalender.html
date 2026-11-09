@@ -19,21 +19,26 @@
   li:first-child { border-top: 0; }
   li small { display: block; color: var(--muted); }
   a.btn { display: block; padding: 18px; border-radius: 16px; background: var(--accent); color: #fff; font-weight: 750; font-size: 19px; text-align: center; text-decoration: none; }
+  a.btn.back { margin-top: 14px; background: transparent; color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+  a.top-back { display: inline-block; margin: 0 0 14px; color: var(--accent); font-weight: 700; text-decoration: none; font-size: 17px; }
   .hint { margin-top: 16px; font-size: 15px; }
   [hidden] { display: none !important; }
 </style>
 <script type="module" src="kalender.js"></script>
 </head>
 <body>
+<a class="top-back" href="./" id="back-top">‹ Zurück zur App</a>
 <h1>📅 Erinnerungen</h1>
 <div id="ok" hidden>
   <p>Diese Termine kommen mit Erinnerung in deinen Kalender:</p>
   <ul id="list"></ul>
   <a class="btn" id="add" download="zyklus-erinnerungen.ics">📅 Zum Kalender hinzufügen</a>
-  <p class="hint">Im Kalender-Dialog „Alle hinzufügen“ tippen – am besten in einen eigenen Kalender „Zyklus“. Danach dieses Fenster mit „Fertig“ schließen.</p>
+  <p class="hint">Im Kalender-Dialog „Alle hinzufügen“ tippen – am besten in einen eigenen Kalender „Zyklus“. Danach zurück zur App.</p>
+  <a class="btn back" href="./" id="back">← Zurück zur App</a>
 </div>
 <div id="empty" hidden>
   <p>Keine Termine gefunden. Bitte in der Zyklus-App unter „Mehr“ → „Erinnerungen“ erneut auf „In den Kalender übernehmen“ tippen.</p>
+  <a class="btn back" href="./">← Zurück zur App</a>
 </div>
 </body>
 </html>
