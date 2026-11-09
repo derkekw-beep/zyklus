@@ -478,3 +478,19 @@ details.fold > summary h3 { margin: 0; }
 details.fold > summary::after { content: "›"; font-size: 24px; line-height: 1; color: var(--muted); transform: rotate(90deg); transition: transform .2s; }
 details.fold[open] > summary::after { transform: rotate(-90deg); }
 details.fold[open] > summary { margin-bottom: 10px; }
+
+/* --- Version 1.3: Zyklus-Rad --------------------------------------------------------- */
+#wheel { touch-action: none; cursor: grab; -webkit-user-select: none; user-select: none; outline: none; border-radius: 50%; }
+#wheel:focus-visible { box-shadow: 0 0 0 3px var(--accent); }
+#wheel:active { cursor: grabbing; }
+.ring .ring-period.pred { stroke-opacity: .38; }
+.ring .ring-dot { fill: var(--blue-on); }
+.ring .ring-today { fill: var(--text); stroke: var(--card); stroke-width: 2; }
+#wheel.moved .ring-marker { stroke: var(--accent); }
+.wheel-nav { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 14px; }
+.wheel-nav .icon-btn:disabled { opacity: .3; }
+.wheel-hint { font-size: 13px; color: var(--muted); font-weight: 600; }
+.wheel-help { margin: 8px auto 0; max-width: 34ch; font-size: 13px; color: var(--muted); }
+.wheel-entry { margin-top: 10px; text-align: left; }
+.wheel-entry .mini-chips { justify-content: center; }
+.wheel-open { display: block; margin: 10px auto 0; }

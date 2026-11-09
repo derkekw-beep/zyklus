@@ -179,7 +179,7 @@ function putEntry(n, e) {
 let state = load();
 let today = C.todayNum();
 let A = C.analyze(state, today);
-const ui = { tab: 'home', y: D(today).getUTCFullYear(), m: D(today).getUTCMonth(), mark: false, statsTab: 'cycle', folds: new Set() };
+const ui = { tab: 'home', y: D(today).getUTCFullYear(), m: D(today).getUTCMonth(), mark: false, statsTab: 'cycle', folds: new Set(), wheelDay: null };
 
 function refresh() {
   today = C.todayNum();
@@ -207,28 +207,123 @@ function render() {
 }
 
 function switchTab(tab) {
+  if (tab !== 'home') ui.wheelDay = null; // zurück auf „Heute“ zeigt wieder heute
   ui.tab = tab;
   render();
   window.scrollTo(0, 0);
 }
 
 // --- Heute -----------------------------------------------------------------
-function ringSvg() {
-  const L = Math.max(A.cycleLen, A.cycleDay);
-  const R = 84, circ = 2 * Math.PI * R, s = A.last.start;
+// --- Zyklus-Rad: zum Drehen, zeigt jeden Tag mit Zyklustag und Phase ------------------------
+const wheel = { dragging: false, lastAng: 0, startAng: 0, acc: 0, moved: 0, el: null, cyc: null };
+const wheelSel = () => (ui.wheelDay === null ? today : ui.wheelDay);
+function wheelBounds() {
+  const futureStart = A.overdue > 0 ? today + 1 : A.base;
+  return { min: A.periods[0].start, max: futureStart + C.AHEAD * A.cycleLen - 1 };
+}
+const PHASE_HELP = {
+  follikel: 'Zeit nach der Periode – der Körper bereitet den nächsten Eisprung vor.',
+  fruchtbar: 'Rund um den Eisprung. Nur eine Kalender-Schätzung, kein Verhütungsmittel.',
+  'eisprung-tag': 'Geschätzter Eisprung. Nur eine Kalender-Schätzung, kein Verhütungsmittel.',
+  luteal: 'Nach dem Eisprung bis zur nächsten Periode. In den Tagen davor können PMS-Beschwerden auftreten.',
+};
+
+function wheelSvg(cyc, sel) {
+  const L = cyc.len, R = 84, circ = 2 * Math.PI * R;
   const arc = (from, to, cls) => {
     const f0 = Math.max(0, from) / L, f1 = Math.min(L, to) / L;
     if (f1 <= f0) return '';
     return `<circle class="${cls}" cx="100" cy="100" r="${R}" stroke-dasharray="${((f1 - f0) * circ).toFixed(2)} ${circ.toFixed(2)}" stroke-dashoffset="${(-f0 * circ).toFixed(2)}"/>`;
   };
-  const periodEnd = (A.ongoing ? A.expectedEnd : A.last.end) - s + 1;
+  const rel = n => n - cyc.start;
+  const pos = (d, r) => {
+    const ang = ((d + 0.5) / L) * 2 * Math.PI - Math.PI / 2;
+    return [(100 + r * Math.cos(ang)).toFixed(1), (100 + r * Math.sin(ang)).toFixed(1)];
+  };
   let g = `<circle class="ring-bg" cx="100" cy="100" r="${R}"/>`;
-  if (state.settings.showFertile) g += arc(A.curWindow.start - s, A.curWindow.end - s + 1, 'ring-fertile');
-  g += arc(0, periodEnd, 'ring-period');
-  const frac = Math.min(1, (A.cycleDay - 0.5) / L);
-  const ang = frac * 2 * Math.PI - Math.PI / 2;
-  const mx = 100 + R * Math.cos(ang), my = 100 + R * Math.sin(ang);
-  return `<svg class="ring" viewBox="0 0 200 200" aria-hidden="true"><g transform="rotate(-90 100 100)">${g}</g><circle class="ring-marker" cx="${mx.toFixed(1)}" cy="${my.toFixed(1)}" r="10"/></svg>`;
+  if (state.settings.showFertile && cyc.win) g += arc(rel(cyc.win.start), rel(cyc.win.end) + 1, 'ring-fertile');
+  const pe = rel(cyc.pEnd) + 1;
+  const pf = Math.min(pe, rel(cyc.predFrom));
+  g += arc(0, pf, 'ring-period');
+  if (pf < pe) g += arc(Math.max(0, pf), pe, 'ring-period pred');
+  let marks = '';
+  for (let d = 0; d < L; d++) {
+    const e = state.days[C.toIso(cyc.start + d)];
+    if (e && hasExtra(e)) {
+      const [x, y] = pos(d, R - 16);
+      marks += `<circle class="ring-dot" cx="${x}" cy="${y}" r="2.6"/>`;
+    }
+  }
+  if (sel !== today && today >= cyc.start && today < cyc.start + L) {
+    const [x, y] = pos(rel(today), R);
+    marks += `<circle class="ring-today" cx="${x}" cy="${y}" r="5"/>`;
+  }
+  const [mx, my] = pos(rel(sel), R);
+  return `<svg class="ring" viewBox="0 0 200 200" aria-hidden="true"><g transform="rotate(-90 100 100)">${g}</g>${marks}<circle class="ring-marker" cx="${mx}" cy="${my}" r="10"/></svg>`;
+}
+
+function wheelInfo(cyc, info, sel, b) {
+  const nav = `<div class="wheel-nav">
+      <button class="icon-btn" data-act="wheel-prev" aria-label="Einen Tag zurück"${sel <= b.min ? ' disabled' : ''}>‹</button>
+      ${sel === today ? '<span class="wheel-hint">↻ Ring drehen für andere Tage</span>' : '<button class="btn small" data-act="wheel-today">Zurück zu heute</button>'}
+      <button class="icon-btn" data-act="wheel-next" aria-label="Einen Tag vor"${sel >= b.max ? ' disabled' : ''}>›</button>
+    </div>`;
+  if (sel === today) {
+    const st = homeStatus();
+    return `<h2 class="status">${esc(st.head)}</h2>
+      ${st.sub ? `<p class="status-sub">${esc(st.sub)}</p>` : ''}
+      ${st.fert ? `<p class="fert-line"><i class="dot-fertile" aria-hidden="true"></i>${esc(st.fert)}</p>` : ''}
+      ${nav}`;
+  }
+  const e = state.days[C.toIso(sel)];
+  const showF = state.settings.showFertile;
+  let head;
+  let phase = info.phase;
+  if (!showF && (phase === 'fruchtbar' || phase === 'eisprung-tag')) phase = sel < cyc.win.ov ? 'follikel' : 'luteal';
+  if (phase === 'periode') head = info.predicted && !C.isPeriodDay(e) ? 'Periode erwartet' : `Periode · Tag ${sel - cyc.pStart + 1}`;
+  else if (phase === 'eisprung-tag') head = 'Eisprung (geschätzt)';
+  else if (phase === 'fruchtbar') head = 'Fruchtbare Tage (geschätzt)';
+  else if (phase === 'luteal') head = 'Lutealphase';
+  else head = 'Follikelphase';
+  const date = fLong(sel);
+  let sub = `${date.charAt(0).toUpperCase()}${date.slice(1)}${sel > today ? ' · Vorhersage' : ''}`;
+  if (cyc.kind !== 'past' && phase !== 'periode' && sel >= today) sub += ` · noch ${plural(info.daysLeft, 'Tag', 'Tage')} bis zur Periode`;
+  return `<h2 class="status">${esc(head)}</h2>
+    <p class="status-sub">${esc(sub)}</p>
+    ${PHASE_HELP[phase] ? `<p class="wheel-help">${PHASE_HELP[phase]}</p>` : ''}
+    ${e ? `<div class="wheel-entry">${entrySummary(e)}</div>` : ''}
+    ${nav}
+    ${sel <= today ? '<button class="link wheel-open" data-act="wheel-open">Diesen Tag ansehen / bearbeiten ›</button>' : ''}`;
+}
+
+function renderWheel() {
+  const host = $('#wheel');
+  if (!host || !A.hasData) return;
+  const b = wheelBounds();
+  let sel = Math.min(b.max, Math.max(b.min, wheelSel()));
+  let cyc = C.cycleAt(sel, A, today);
+  if (!cyc) {
+    sel = today;
+    cyc = C.cycleAt(today, A, today);
+  }
+  ui.wheelDay = sel === today ? null : sel;
+  const info = C.dayInfoAt(sel, cyc);
+  wheel.cyc = cyc;
+  host.innerHTML = `${wheelSvg(cyc, sel)}<div class="ring-center">
+      <span class="rc-small">${sel === today ? 'Zyklustag' : esc(fShort(sel))}</span>
+      <span class="rc-big">${info.day}</span>
+      <span class="rc-small">${sel === today ? '' : 'Zyklustag · '}von ${cyc.kind === 'past' ? '' : 'ca. '}${cyc.len}</span>
+    </div>`;
+  host.setAttribute('aria-valuetext', `${fLong(sel)}, Zyklustag ${info.day}`);
+  host.classList.toggle('moved', sel !== today);
+  $('#wheel-info').innerHTML = wheelInfo(cyc, info, sel, b);
+}
+function setWheelDay(n) {
+  const b = wheelBounds();
+  n = Math.min(b.max, Math.max(b.min, n));
+  if (n === wheelSel()) return;
+  ui.wheelDay = n === today ? null : n;
+  renderWheel();
 }
 
 function homeStatus() {
@@ -372,12 +467,9 @@ function renderHome() {
       <button class="btn primary" data-act="start-mark">Letzte Periode im Kalender markieren</button>
     </div>`);
   } else {
-    const st = homeStatus();
     out.push(`<div class="card hero">
-      <div class="ring-wrap">${ringSvg()}<div class="ring-center"><span class="rc-small">Zyklustag</span><span class="rc-big">${A.cycleDay}</span><span class="rc-small">von ca. ${A.cycleLen}</span></div></div>
-      <h2 class="status">${esc(st.head)}</h2>
-      ${st.sub ? `<p class="status-sub">${esc(st.sub)}</p>` : ''}
-      ${st.fert ? `<p class="fert-line"><i class="dot-fertile" aria-hidden="true"></i>${esc(st.fert)}</p>` : ''}
+      <div class="ring-wrap" id="wheel" tabindex="0" role="slider" aria-label="Zyklus-Rad – drehen, um andere Tage anzusehen"></div>
+      <div id="wheel-info"></div>
     </div>`);
   }
 
@@ -412,6 +504,7 @@ function renderHome() {
   }
   out.push('<p class="disclaimer">Vorhersagen sind Schätzungen aus deinen Einträgen – kein Verhütungsmittel und kein Ersatz für ärztlichen Rat.</p>');
   $('#view-home').innerHTML = out.join('');
+  renderWheel();
 }
 
 // --- Kalender ----------------------------------------------------------------
@@ -757,7 +850,7 @@ function renderSettings() {
       </ul>
     </details>
     <div class="card"><button class="btn danger wide" data-act="wipe">Alle Daten löschen</button></div>
-    <p class="foot">Zyklus ${APP_VERSION} · ${plural(nDays, 'Tag', 'Tage')} eingetragen</p>`;
+    <p class="foot">Zyklus ${APP_VERSION} · ${plural(nDays, 'Tag', 'Tage')} eingetragen<br><button class="link" data-act="check-update">Nach Updates suchen</button></p>`;
 }
 
 function stepSetting(key, dir) {
@@ -1278,6 +1371,16 @@ const ACTIONS = {
     renderHome();
   },
   'sleep-stop'() { stopSleep(); },
+  'wheel-prev'() { setWheelDay(wheelSel() - 1); },
+  'wheel-next'() { setWheelDay(wheelSel() + 1); },
+  'wheel-today'() { setWheelDay(today); },
+  'wheel-open'() { openTracker(wheelSel()); },
+  'check-update'() {
+    toast('Suche nach Updates …');
+    const done = () => setTimeout(() => location.reload(), 600);
+    if (swReg) swReg.update().then(done, done);
+    else done();
+  },
   'export'() { exportBackup(); },
   'import'() { $('#import-file').click(); },
   'wipe'() { wipe(); },
@@ -1380,6 +1483,47 @@ document.addEventListener('focusin', ev => {
   if (t.classList && t.classList.contains('big-num')) setTimeout(() => { try { t.setSelectionRange(0, t.value.length); } catch { /* egal */ } }, 0);
 });
 
+// Zyklus-Rad drehen: Winkeländerung am Ring = Tage (eine Umdrehung = ein Zyklus)
+function wheelAngle(ev, el) {
+  const r = el.getBoundingClientRect();
+  const dx = ev.clientX - (r.left + r.width / 2), dy = ev.clientY - (r.top + r.height / 2);
+  return { ang: Math.atan2(dy, dx), dist: Math.hypot(dx, dy) / (r.width / 2) };
+}
+document.addEventListener('pointerdown', ev => {
+  const el = ev.target.closest && ev.target.closest('#wheel');
+  if (!el || !wheel.cyc) return;
+  const { ang, dist } = wheelAngle(ev, el);
+  if (dist < 0.55) return; // Mitte: nicht drehen
+  Object.assign(wheel, { dragging: true, lastAng: ang, startAng: ang, acc: 0, moved: 0, el });
+  try { el.setPointerCapture(ev.pointerId); } catch { /* egal */ }
+  ev.preventDefault();
+});
+document.addEventListener('pointermove', ev => {
+  if (!wheel.dragging) return;
+  const { ang } = wheelAngle(ev, wheel.el);
+  let d = ang - wheel.lastAng;
+  if (d > Math.PI) d -= 2 * Math.PI;
+  else if (d < -Math.PI) d += 2 * Math.PI;
+  wheel.lastAng = ang;
+  wheel.moved += Math.abs(d);
+  wheel.acc += (d / (2 * Math.PI)) * wheel.cyc.len;
+  const steps = Math.trunc(wheel.acc);
+  if (steps) {
+    wheel.acc -= steps;
+    setWheelDay(wheelSel() + steps);
+  }
+});
+document.addEventListener('pointerup', () => {
+  if (!wheel.dragging) return;
+  wheel.dragging = false;
+  if (wheel.moved < 0.08) {
+    // kurzer Tipp auf den Ring: direkt zu diesem Tag springen
+    const frac = ((wheel.startAng + Math.PI / 2) / (2 * Math.PI) + 1) % 1;
+    setWheelDay(wheel.cyc.start + Math.min(wheel.cyc.len - 1, Math.floor(frac * wheel.cyc.len)));
+  }
+});
+document.addEventListener('pointercancel', () => { wheel.dragging = false; });
+
 // Auf- und Zuklappen unter „Mehr“ merken, damit Neuzeichnen nichts zuklappt
 document.addEventListener('toggle', ev => {
   const d = ev.target;
@@ -1391,6 +1535,10 @@ document.addEventListener('toggle', ev => {
 
 document.addEventListener('keydown', ev => {
   if (ev.key === 'Enter' && ev.target.id === 'tag-input') { ev.preventDefault(); addCustomTag(); }
+  if (ev.target.id === 'wheel' && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
+    ev.preventDefault();
+    setWheelDay(wheelSel() + (ev.key === 'ArrowRight' ? 1 : -1));
+  }
   if (ev.key === 'Escape' && tr.n !== null) {
     if (!$('#tr-ask').hidden) answerAsk('stay');
     else if (!$('#tr-custom').hidden) ACTIONS['tr-customize-done']();
@@ -1435,7 +1583,7 @@ function tick() {
   const el = $('#sleep-elapsed');
   if (el && state.meta.sleepStart) el.textContent = fmtSleep(sleepElapsed());
   const typing = document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
-  if (sleepMode() !== lastSleepMode && !typing) renderHome();
+  if (sleepMode() !== lastSleepMode && !typing && !wheel.dragging) renderHome();
 }
 setInterval(tick, 30000);
 
@@ -1471,4 +1619,4 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
 // nur für automatische Tests
-window.__zyklus = { get state() { return state; }, get analysis() { return A; } };
+window.__zyklus = { get state() { return state; }, get analysis() { return A; }, get wheelDay() { return wheelSel(); } };

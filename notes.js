@@ -3,6 +3,16 @@
 
 export const NOTES = [
   {
+    v: '1.3',
+    date: '09.11.2026',
+    items: [
+      'Zyklus-Rad auf „Heute“: Ring drehen und jeden Tag ansehen – Zyklustag, Phase, Vorhersage und deine Einträge',
+      'Vergangene Zyklen und die nächsten vorhergesagten Zyklen lassen sich durchdrehen, Pfeile für einzelne Tage',
+      'Updates kommen jetzt beim nächsten Öffnen an, ohne zweimal starten zu müssen',
+      '„Nach Updates suchen“ unter „Mehr“',
+    ],
+  },
+  {
     v: '1.2',
     date: '09.11.2026',
     items: [
@@ -49,6 +59,7 @@ export const FEATURES = [
   ['📝', 'Tracking', 'Periode, Schmierblutung, Gefühle, Schmerzen, PMS, Schlaf, Schlaftabletten, Sexleben, Energie, Geist, Verdauung, Ausfluss, Haut, Haare, Gewicht, Notiz und eigene Tags. Mit Suche und Wochenleiste.'],
   ['😴', 'Schlaf', 'Schlafen gehen / Aufgewacht per Tipp, Schlafziel, Schlafdefizit der Woche, Schlafrhythmus und Schlaf je Zyklusphase.'],
   ['💊', 'Schlaftabletten', 'Wie oft, wann eingenommen, Schlaf mit und ohne Tablette und je Zyklusphase.'],
+  ['🎡', 'Zyklus-Rad', 'Auf „Heute“ den Ring drehen: Zyklustag, Phase und Einträge für jeden Tag, auch vergangene und kommende Zyklen.'],
   ['📅', 'Kalender', 'Periode, Vorhersage, fruchtbare Tage, Eisprung und alle Einträge auf einen Blick. Vergangene Perioden schnell nachtragen.'],
   ['📊', 'Statistik', 'Zyklusverlauf, Durchschnittswerte und Muster – zum Beispiel an welchem Zyklustag Krämpfe meistens auftreten.'],
   ['💾', 'Backup', 'Alle Daten als Datei sichern (z. B. in iCloud Drive) und wiederherstellen.'],

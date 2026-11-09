@@ -135,6 +135,54 @@ export function phaseOf(n, a) {
   return n < ov - 5 ? 'follikel' : 'luteal';
 }
 
+// Für das Zyklus-Rad: Zu welchem Zyklus gehört Tag n? Vergangene Zyklen aus den Einträgen, der laufende
+// bis zur erwarteten Periode (bei Verspätung bis heute), danach vorhergesagte Zyklen.
+// Ergebnis: { start, len, pStart, pEnd, predFrom, win, kind } oder null (vor dem ersten Eintrag / zu weit voraus).
+//   predFrom: ab diesem Tag ist die Periode nur vorhergesagt · win: geschätztes fruchtbares Fenster oder null
+export function cycleAt(n, a, today) {
+  if (!a.hasData) return null;
+  const ps = a.periods;
+  if (n < ps[0].start) return null;
+  const winFor = (next, pEnd) => {
+    const ov = Math.max(next - a.luteal, pEnd + 1);
+    return { start: ov - 5, end: ov + 1, ov };
+  };
+  for (let i = 0; i + 1 < ps.length; i++) {
+    if (n >= ps[i].start && n < ps[i + 1].start) {
+      const next = ps[i + 1].start;
+      const flagged = a.cycles[i] && a.cycles[i].note;
+      return { start: ps[i].start, len: next - ps[i].start, pStart: ps[i].start, pEnd: ps[i].end, predFrom: Infinity, win: flagged ? null : winFor(next, ps[i].end), kind: 'past' };
+    }
+  }
+  const last = a.last;
+  const futureStart = a.overdue > 0 ? today + 1 : a.base; // bei Verspätung gehört heute noch zum laufenden Zyklus
+  if (n < futureStart) {
+    return {
+      start: last.start, len: futureStart - last.start, pStart: last.start,
+      pEnd: a.ongoing ? a.expectedEnd : last.end, predFrom: a.ongoing ? Math.max(last.end + 1, today + 1) : Infinity,
+      win: winFor(a.nextStart, last.end), kind: 'current',
+    };
+  }
+  const k = Math.floor((n - futureStart) / a.cycleLen);
+  if (k >= AHEAD) return null;
+  const start = futureStart + k * a.cycleLen;
+  const pEnd = start + a.periodLen - 1;
+  return { start, len: a.cycleLen, pStart: start, pEnd, predFrom: start, win: winFor(start + a.cycleLen, pEnd), kind: 'future' };
+}
+
+// Zyklustag und Phase eines Tages innerhalb seines Zyklus (siehe cycleAt)
+export function dayInfoAt(n, cyc) {
+  const day = n - cyc.start + 1;
+  let phase;
+  if (n >= cyc.pStart && n <= cyc.pEnd) phase = 'periode';
+  else if (cyc.win && n === cyc.win.ov) phase = 'eisprung-tag';
+  else if (cyc.win && n >= cyc.win.start && n <= cyc.win.end) phase = 'fruchtbar';
+  else if (cyc.win && n > cyc.win.end) phase = 'luteal';
+  else if (!cyc.win && n > cyc.pEnd && day > cyc.len / 2) phase = 'luteal';
+  else phase = 'follikel';
+  return { day, phase, predicted: n >= cyc.predFrom, daysLeft: cyc.start + cyc.len - n };
+}
+
 // Typischer Zeitpunkt mehrerer Einträge als Kreis-Mittelwert: Tag 27, 28, 1, 2 ergibt "um den
 // Periodenbeginn" und nicht "Tag 15". null, wenn zu wenige oder zu verstreut.
 export function typicalPhase(fracs) {
