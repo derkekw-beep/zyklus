@@ -3,7 +3,7 @@
 // Eine neue Version wird beim Installieren vollständig geladen (sonst bleibt die alte aktiv),
 // danach lädt sich die App selbst neu. Offline läuft sie aus dem Cache.
 // Bei jeder Änderung an der App die Versionsnummer erhöhen (macht tools/deploy.mjs).
-const VERSION = 'zyklus-v17';
+const VERSION = 'zyklus-v18';
 const FILES = [
   './',
   './index.html',

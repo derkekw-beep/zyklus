@@ -1427,20 +1427,22 @@ async function exportBackup() {
   toast('Backup-Datei erstellt');
 }
 async function importBackup(file) {
+  let data;
   try {
     const obj = JSON.parse(await file.text());
     if (!obj || typeof obj !== 'object' || !obj.days || typeof obj.days !== 'object' || Array.isArray(obj.days)) throw new Error('kein Backup');
-    const data = normalize(obj);
-    const count = Object.keys(data.days).length;
-    if (!confirm(`Backup mit ${plural(count, 'eingetragenem Tag', 'eingetragenen Tagen')} laden? Die aktuellen Einträge auf diesem Gerät werden dabei ersetzt.`)) return;
-    state = data;
-    if (!commit()) return;
-    dropUndo();
-    render();
-    toast('Backup geladen');
+    data = normalize(obj);
   } catch {
     toast('Diese Datei ist kein gültiges Zyklus-Backup');
+    return;
   }
+  const count = Object.keys(data.days).length;
+  if (!confirm(`Backup mit ${plural(count, 'eingetragenem Tag', 'eingetragenen Tagen')} laden? Die aktuellen Einträge auf diesem Gerät werden dabei ersetzt.`)) return;
+  const before = state;
+  state = data;
+  if (!commit()) { state = before; refresh(); return; } // Speichern fehlgeschlagen: beim bisherigen Stand bleiben
+  dropUndo();
+  toast('Backup geladen');
 }
 // --- Erinnerungen über den iPhone-Kalender (.ics) ------------------------------------------
 function remindCard() {
@@ -1519,6 +1521,7 @@ async function importClue(file) {
     const { days: raw, unknown } = parseClue(json, today, C.toNum);
     const incoming = {};
     for (const [iso, e] of Object.entries(raw)) {
+      if (!C.isValidIso(iso)) continue; // z. B. 31.02. – gibt es nicht, würde sonst auf einen anderen Tag rutschen
       const c = cleanEntry(e);
       if (c) incoming[iso] = c;
     }

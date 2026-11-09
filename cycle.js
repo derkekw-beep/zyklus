@@ -162,7 +162,7 @@ export function cycleAt(n, a, today) {
   if (n < futureStart) {
     return {
       start: last.start, len: futureStart - last.start, pStart: last.start,
-      pEnd: a.ongoing ? a.expectedEnd : last.end, predFrom: a.ongoing ? Math.max(last.end + 1, today + 1) : Infinity,
+      pEnd: a.ongoing ? a.expectedEnd : last.end, predFrom: a.ongoing ? Math.max(last.end + 1, today) : Infinity, // heute ohne Eintrag ist wie im Kalender nur vorhergesagt
       win: a.curWindow, kind: 'current',
     };
   }
