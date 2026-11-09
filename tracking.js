@@ -48,7 +48,7 @@ export const CATS = [
       ['unruhig', 'Unruhiger Schlaf', '🔄'], ['traeume', 'Lebhafte Träume', '💭'], ['schwitzen', 'Nächtliches Schwitzen', '💦'],
     ],
   },
-  { id: 'sleep', name: 'Schlaf', type: 'sleep' },
+  { id: 'sleep', name: 'Schlaf', type: 'sleep', keywords: 'schlaftablette tablette medikament pille einschlafen aufwachen' },
   {
     id: 'sex', name: 'Sexleben', tone: 'teal',
     groups: [['kein', 'geschuetzt'], ['kein', 'ungeschuetzt'], ['kein', 'interruptus'], ['kein', 'schmerzhaft'], ['orgasmus', 'kein_orgasmus'], ['libido_hoch', 'libido_niedrig']],

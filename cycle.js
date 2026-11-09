@@ -115,6 +115,26 @@ export function cyclePhase(n, periods, avgLen) {
   return (d + 0.5) / len;
 }
 
+// Zyklusphase eines Tages: 'periode' | 'follikel' | 'eisprung' | 'luteal' | null (unbekannt).
+// a = Ergebnis von analyze(). Eisprung = nächste Periode − Lutealphase, "eisprung" = fruchtbares Fenster.
+export function phaseOf(n, a) {
+  const ps = a.periods;
+  let i = -1;
+  for (let k = 0; k < ps.length; k++) {
+    if (ps[k].start <= n) i = k;
+    else break;
+  }
+  if (i < 0) return null;
+  const p = ps[i];
+  if (a.cycles[i] && a.cycles[i].note) return null; // Zyklus mit vermutlich fehlendem Eintrag: keine Aussage
+  const next = i + 1 < ps.length ? ps[i + 1].start : a.nextStart;
+  if (!(n < next)) return null; // überfällig: Phase unklar
+  if (n <= p.end) return 'periode';
+  const ov = Math.max(next - a.luteal, p.end + 1);
+  if (n >= ov - 5 && n <= ov + 1) return 'eisprung';
+  return n < ov - 5 ? 'follikel' : 'luteal';
+}
+
 // Typischer Zeitpunkt mehrerer Einträge als Kreis-Mittelwert: Tag 27, 28, 1, 2 ergibt "um den
 // Periodenbeginn" und nicht "Tag 15". null, wenn zu wenige oder zu verstreut.
 export function typicalPhase(fracs) {
