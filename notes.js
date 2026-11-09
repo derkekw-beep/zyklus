@@ -3,6 +3,15 @@
 
 export const NOTES = [
   {
+    v: '1.4',
+    date: '09.11.2026',
+    items: [
+      'Daten aus Clue übernehmen: unter „Mehr“ → Backup die Clue-Datei wählen – deine Einträge hier bleiben erhalten, Clue ergänzt nur',
+      'Vorschau vor dem Import und „Import rückgängig“',
+      'Neue Kategorie „Pille (Verhütung)“: genommen, vergessen, zu spät, doppelt',
+    ],
+  },
+  {
     v: '1.3',
     date: '09.11.2026',
     items: [
@@ -62,6 +71,6 @@ export const FEATURES = [
   ['🎡', 'Zyklus-Rad', 'Auf „Heute“ den Ring drehen: Zyklustag, Phase und Einträge für jeden Tag, auch vergangene und kommende Zyklen.'],
   ['📅', 'Kalender', 'Periode, Vorhersage, fruchtbare Tage, Eisprung und alle Einträge auf einen Blick. Vergangene Perioden schnell nachtragen.'],
   ['📊', 'Statistik', 'Zyklusverlauf, Durchschnittswerte und Muster – zum Beispiel an welchem Zyklustag Krämpfe meistens auftreten.'],
-  ['💾', 'Backup', 'Alle Daten als Datei sichern (z. B. in iCloud Drive) und wiederherstellen.'],
+  ['💾', 'Backup & Import', 'Alle Daten als Datei sichern (z. B. in iCloud Drive) und wiederherstellen. Daten aus Clue übernehmen.'],
   ['🔒', 'Privat', 'Kein Konto, keine Cloud, keine Werbung. Alles bleibt auf diesem iPhone.'],
 ];

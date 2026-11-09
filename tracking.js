@@ -61,6 +61,11 @@ export const CATS = [
     ],
   },
   {
+    id: 'bc', name: 'Pille (Verhütung)', tone: 'teal', single: true, keywords: 'antibabypille verhütung pille',
+    info: 'Für die Antibabypille. Mit der Pille gibt es meist keinen Eisprung – die angezeigten fruchtbaren Tage sind dann nicht aussagekräftig. Du kannst sie unter „Mehr“ ausblenden.',
+    opts: [['genommen', 'Genommen', '✅'], ['vergessen', 'Vergessen', '❌'], ['spaet', 'Zu spät genommen', '⏰'], ['doppelt', 'Doppelt genommen', '✌️']],
+  },
+  {
     id: 'energy', name: 'Energie', tone: 'amber', single: true,
     opts: [
       ['leer', 'Energielos', '🪫'], ['muede', 'Müde', '😴'], ['ok', 'OK', '👌'],

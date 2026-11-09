@@ -2,6 +2,7 @@ import * as C from './cycle.js';
 import { CATS, CHIP_CATS, CAT, OPT, NOTE_MAX, TAG_MAX, choose, toggle, cleanTags } from './tracking.js';
 import * as S from './sleep.js';
 import { NOTES, APP_VERSION, FEATURES } from './notes.js';
+import { parseClue, looksLikeClue, readImportFile, mergeDays } from './importer.js';
 
 // ---------------------------------------------------------------------------
 // Grundlagen
@@ -835,6 +836,10 @@ function renderSettings() {
       <p class="muted small">Deine Einträge liegen nur auf diesem Gerät. Wird die App gelöscht oder das Handy gewechselt, sind sie ohne Backup weg. Das Backup ist eine Datei, die du z. B. in „Dateien“ oder iCloud ablegst.</p>
       <div class="btn-row"><button class="btn primary" data-act="export">Backup speichern</button><button class="btn" data-act="import">Backup laden</button></div>
       <p class="row-sub">Letztes Backup: ${lb ? esc(fDMY(C.todayNum(new Date(lb)))) : 'noch keins'}</p>
+      <h4>Aus einer anderen App übernehmen</h4>
+      <p class="muted small">Clue: Einstellungen → „Meine Daten herunterladen“, dann hier die Datei <b>measurements.json</b> (oder das ZIP) wählen. Deine Einträge in dieser App bleiben dabei immer erhalten, Clue ergänzt nur.</p>
+      <div class="btn-row"><button class="btn" data-act="clue-import">📥 Aus Clue importieren</button>${undoInfo() ? '<button class="btn ghost" data-act="undo-import">Import rückgängig</button>' : ''}</div>
+      ${undoInfo() ? `<p class="row-sub">Sicherheitskopie vom ${esc(undoInfo())} – „Rückgängig“ stellt den Stand vor dem Import wieder her.</p>` : ''}
     </div>
     <details class="card fold" id="notes"${ui.folds.has('notes') ? ' open' : ''}><summary><h3>✨ Neuigkeiten <small>Version ${esc(APP_VERSION)}</small></h3></summary>
       ${NOTES.map((n, i) => `<details class="notes"${i === 0 ? ' open' : ''}><summary>Version ${esc(n.v)} <small>${esc(n.date)}</small></summary><ul class="plain">${n.items.map(it => `<li>${esc(it)}</li>`).join('')}</ul></details>`).join('')}
@@ -1190,6 +1195,65 @@ async function importBackup(file) {
     toast('Diese Datei ist kein gültiges Zyklus-Backup');
   }
 }
+// --- Import aus Clue ---------------------------------------------------------------------
+const UNDO_KEY = `${KEY}-vor-import`;
+function undoInfo() {
+  try {
+    const s = JSON.parse(localStorage.getItem(UNDO_KEY));
+    return s && s.at ? fDMY(C.todayNum(new Date(s.at))) : '';
+  } catch { return ''; }
+}
+async function importClue(file) {
+  try {
+    const files = await readImportFile(await file.arrayBuffer());
+    let json = null;
+    for (const f of files) {
+      try { const j = JSON.parse(f.text); if (looksLikeClue(j)) { json = j; break; } } catch { /* nächste Datei */ }
+    }
+    if (!json) throw new Error('Keine Clue-Messungen gefunden – bitte die Datei „measurements.json“ aus dem Clue-Export wählen');
+    const { days: raw, unknown } = parseClue(json, today, C.toNum);
+    const incoming = {};
+    for (const [iso, e] of Object.entries(raw)) {
+      const c = cleanEntry(e);
+      if (c) incoming[iso] = c;
+    }
+    const res = mergeDays(state.days, incoming, 'Clue');
+    const periodDays = Object.values(incoming).filter(e => C.isPeriodDay(e)).length;
+    const lines = [
+      `Clue: ${plural(Object.keys(incoming).length, 'Tag', 'Tage')} mit Einträgen gefunden, davon ${plural(periodDays, 'Periodentag', 'Periodentage')}.`,
+      `${res.stats.neu} neu · ${res.stats.ergaenzt} ergänzt · ${res.stats.unveraendert} schon vorhanden.`,
+    ];
+    if (res.stats.konflikte) lines.push(`${res.stats.konflikte}× widersprechen sich Clue und diese App – dort bleiben deine Einträge von hier.`);
+    if (unknown.length) lines.push(`Als eigene Tags übernommen: ${unknown.slice(0, 6).map(([t]) => t).join(', ')}${unknown.length > 6 ? ' …' : ''}`);
+    lines.push('', 'Jetzt importieren? Unter „Mehr“ kannst du den Import wieder rückgängig machen.');
+    const msg = lines.join('\n');
+    if (!confirm(msg)) return;
+    try {
+      localStorage.setItem(UNDO_KEY, JSON.stringify({ at: new Date().toISOString(), data: state }));
+    } catch {
+      if (!confirm('Die Sicherheitskopie für „Rückgängig“ ließ sich nicht speichern. Trotzdem importieren?')) return;
+    }
+    state.days = res.days;
+    const tags = state.settings.customTags;
+    for (const [t] of unknown) if (tags.length < TAG_MAX && !tags.some(x => x.toLowerCase() === t.toLowerCase())) tags.push(t);
+    commit();
+    toast(`Clue-Daten importiert: ${res.stats.neu} neue Tage`);
+  } catch (err) {
+    toast(err && err.message ? err.message : 'Import fehlgeschlagen');
+  }
+}
+function undoImport() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(UNDO_KEY)); } catch { /* egal */ }
+  if (!saved || !saved.data) return toast('Keine Sicherheitskopie gefunden');
+  if (!confirm(`Import vom ${fDMY(C.todayNum(new Date(saved.at)))} rückgängig machen? Was du seit dem Import eingetragen hast, geht dabei verloren.`)) return;
+  state = normalize(saved.data);
+  save();
+  try { localStorage.removeItem(UNDO_KEY); } catch { /* egal */ }
+  refresh();
+  toast('Import rückgängig gemacht');
+}
+
 function wipe() {
   if (!confirm('Wirklich alle Einträge und Einstellungen löschen?')) return;
   if (!confirm('Letzte Rückfrage: Das lässt sich ohne Backup nicht rückgängig machen. Löschen?')) return;
@@ -1384,6 +1448,8 @@ const ACTIONS = {
   'export'() { exportBackup(); },
   'import'() { $('#import-file').click(); },
   'wipe'() { wipe(); },
+  'clue-import'() { $('#clue-file').click(); },
+  'undo-import'() { undoImport(); },
 };
 
 document.addEventListener('click', ev => {
@@ -1463,6 +1529,10 @@ document.addEventListener('change', ev => {
   } else if (t.id === 'pillname-setting') {
     state.settings.pillName = t.value.trim().slice(0, PILL_MAX);
     save();
+  } else if (t.id === 'clue-file') {
+    const f = t.files && t.files[0];
+    t.value = '';
+    if (f) importClue(f);
   } else if (t.id === 'import-file') {
     const f = t.files && t.files[0];
     t.value = '';
