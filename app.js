@@ -88,7 +88,7 @@ function normalize(o) {
   if (Array.isArray(s.hiddenCats)) d.settings.hiddenCats = s.hiddenCats.filter(id => CAT[id] && !CAT[id].fixed);
   d.settings.customTags = strList(s.customTags, 30, TAG_MAX);
   if (o.meta && typeof o.meta.created === 'string') d.meta.created = o.meta.created;
-  if (o.meta && typeof o.meta.lastBackup === 'string') d.meta.lastBackup = o.meta.lastBackup;
+  if (o.meta && typeof o.meta.lastBackup === 'string' && Number.isFinite(Date.parse(o.meta.lastBackup))) d.meta.lastBackup = o.meta.lastBackup;
   if (o.days && typeof o.days === 'object') {
     for (const [iso, v] of Object.entries(o.days)) {
       if (!C.isValidIso(iso)) continue;
@@ -118,6 +118,7 @@ function save() {
     storageOk = false;
     toast('Speichern hat nicht geklappt – Speicher voll oder gesperrt');
   }
+  return storageOk;
 }
 function entry(n) {
   const e = state.days[C.toIso(n)];
@@ -139,7 +140,14 @@ function refresh() {
   today = C.todayNum();
   A = C.analyze(state, today);
   render();
-  if (tr.n !== null) renderWeek();
+  if (tr.n !== null) {
+    $('#tr-title').textContent = tr.n === today ? `Heute: ${fTitle(tr.n)}` : fWdTitle(tr.n);
+    renderWeek();
+  }
+}
+// Datumswechsel um Mitternacht bei offener App: sofort nachziehen, damit nichts auf dem Vortag landet
+function checkNewDay() {
+  if (C.todayNum() !== today) refresh();
 }
 function commit() { save(); refresh(); }
 
@@ -362,32 +370,50 @@ function shiftMonth(delta) {
 // --- Statistik ---------------------------------------------------------------
 function collectPatterns() {
   const res = {};
-  const add = (cat, id, cd) => {
+  const add = (cat, id, ph) => {
     const m = (res[cat] ||= {});
-    const r = (m[id] ||= { n: 0, days: [] });
+    const r = (m[id] ||= { n: 0, phases: [] });
     r.n++;
-    if (cd !== null && cd <= 60) r.days.push(cd);
+    if (ph !== null) r.phases.push(ph);
   };
   for (const [iso, e] of Object.entries(state.days)) {
     const n = C.toNum(iso);
     if (n > today) continue;
-    const cd = C.cycleDayOf(n, A.periods);
-    for (const [cat, ids] of Object.entries(e.tags)) for (const id of ids) add(cat, id, cd);
-    for (const t of e.custom) add('custom', t, cd);
+    const ph = C.cyclePhase(n, A.periods, A.cycleLen);
+    for (const [cat, ids] of Object.entries(e.tags)) for (const id of ids) add(cat, id, ph);
+    for (const t of e.custom) add('custom', t, ph);
   }
   return res;
+}
+
+// "meist um Zyklustag 14", "meist ca. 3 Tage vor der Periode" oder "rund um den Periodenbeginn"
+function phaseText(phases) {
+  const m = C.typicalPhase(phases);
+  if (m === null) return '';
+  const L = A.cycleLen;
+  const pos = m * L; // 0 = Beginn von Zyklustag 1
+  if (pos < 1 || pos > L - 1) return 'meist rund um den Periodenbeginn';
+  const day = Math.floor(pos) + 1;
+  if (day > L - 10) {
+    const before = L - day + 1;
+    return `meist ca. ${plural(before, 'Tag', 'Tage')} vor der Periode`;
+  }
+  return `meist um Zyklustag ${day}`;
 }
 
 function patternCard(title, rows) {
   if (!rows.length) return '';
   const top = rows[0].n;
-  return `<div class="card"><h3>${esc(title)}</h3><ul class="pattern">${rows.map(r => `
+  return `<div class="card"><h3>${esc(title)}</h3><ul class="pattern">${rows.map(r => {
+    const when = phaseText(r.phases);
+    return `
     <li>
       <span class="p-label"><span class="em" aria-hidden="true">${r.emoji}</span>${esc(r.label)}</span>
       <span class="p-bar"><span style="width:${Math.max(6, (r.n / top) * 100).toFixed(0)}%"></span></span>
       <span class="p-num">${r.n}×</span>
-      ${r.days.length >= 2 ? `<span class="p-sub">meist um Zyklustag ${Math.round(C.median(r.days))}</span>` : ''}
-    </li>`).join('')}</ul></div>`;
+      ${when ? `<span class="p-sub">${when}</span>` : ''}
+    </li>`;
+  }).join('')}</ul></div>`;
 }
 
 function renderStats() {
@@ -560,15 +586,17 @@ async function leaveDay(next) {
   if (tr.dirty) {
     const choice = await askUnsaved();
     if (choice === 'stay') return;
-    if (choice === 'save') { commitDraft(); toast('Gespeichert'); }
+    if (choice === 'save' && !commitDraft()) return; // Speichern fehlgeschlagen: Entwurf behalten
+    if (choice === 'save') toast('Gespeichert');
   }
   next();
 }
 function commitDraft() {
   putEntry(tr.n, tr.draft);
-  save();
-  tr.dirty = false;
+  const ok = save();
+  if (ok) tr.dirty = false;
   A = C.analyze(state, today);
+  return ok;
 }
 function trGoto(n) {
   n = Math.min(today, n);
@@ -736,7 +764,7 @@ function deleteCustomTag(name) {
 function readSleep() {
   const h = parseInt($('#sl-h').value, 10), m = parseInt($('#sl-m').value, 10);
   const hh = Number.isFinite(h) ? Math.min(24, Math.max(0, h)) : 0;
-  const mm = Number.isFinite(m) ? Math.min(59, Math.max(0, m)) : 0;
+  const mm = hh >= 24 ? 0 : Number.isFinite(m) ? Math.min(59, Math.max(0, m)) : 0;
   const tot = Math.min(1440, hh * 60 + mm);
   tr.draft.sleep = tot > 0 ? tot : null;
   markDirty();
@@ -790,7 +818,7 @@ async function exportBackup() {
 async function importBackup(file) {
   try {
     const obj = JSON.parse(await file.text());
-    if (!obj || typeof obj !== 'object' || typeof obj.days !== 'object') throw new Error('kein Backup');
+    if (!obj || typeof obj !== 'object' || !obj.days || typeof obj.days !== 'object' || Array.isArray(obj.days)) throw new Error('kein Backup');
     const data = normalize(obj);
     const count = Object.keys(data.days).length;
     if (!confirm(`Backup mit ${plural(count, 'eingetragenem Tag', 'eingetragenen Tagen')} laden? Die aktuellen Einträge auf diesem Gerät werden dabei ersetzt.`)) return;
@@ -843,7 +871,11 @@ const ACTIONS = {
   'cal-today'() { ui.y = D(today).getUTCFullYear(); ui.m = D(today).getUTCMonth(); renderCal(); },
   'mark'() { ui.mark = !ui.mark; renderCal(); },
   'tr-close'() { leaveDay(hideTracker); },
-  'tr-save'() { commitDraft(); hideTracker(); toast('Gespeichert'); },
+  'tr-save'() {
+    if (!commitDraft()) return; // Fehlermeldung kam schon, Entwurf bleibt offen
+    hideTracker();
+    toast('Gespeichert');
+  },
   'tr-customize'() { $('#tr-custom-list').innerHTML = catToggles(); $('#tr-custom').hidden = false; },
   'tr-customize-done'() { $('#tr-custom').hidden = true; renderTrBody(); },
   'wk-prev'() { trGoto(tr.n - 7); },
@@ -863,6 +895,7 @@ const ACTIONS = {
 document.addEventListener('click', ev => {
   const el = ev.target.closest('button, [data-act]');
   if (!el || el.disabled) return;
+  checkNewDay();
   const d = el.dataset;
   if (d.ask) return answerAsk(d.ask);
   if (d.tab) return switchTab(d.tab);
@@ -930,6 +963,7 @@ document.addEventListener('change', ev => {
     // nur das verlassene Feld aufhübschen, das andere nicht anfassen
     const max = t.id === 'sl-h' ? 24 : 59;
     if (t.value !== '') t.value = String(Math.min(max, parseInt(t.value, 10) || 0)).padStart(2, '0');
+    if (parseInt($('#sl-h').value, 10) >= 24 && $('#sl-m').value) $('#sl-m').value = '00'; // max. 24:00
   } else if (t.id === 'wt' && tr.draft) {
     readWeight(true);
   }
@@ -963,15 +997,21 @@ function onSwipe(el, fn) {
 onSwipe($('#view-cal'), dir => shiftMonth(dir));
 onSwipe($('#tr-week'), dir => trGoto(tr.n + 7 * dir));
 
-// Neuer Tag, während die App offen war
-// App geht in den Hintergrund (iOS kann sie dann jederzeit beenden): offene Änderungen sichern
+// App geht in den Hintergrund (iOS kann sie dann jederzeit beenden): offene Änderungen sichern,
+// auch wenn gerade die Rückfrage offen ist. Beim Zurückkommen: neuer Tag? Update da?
+let swReg = null;
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
-    if (tr.n !== null && tr.dirty && !askResolve) { commitDraft(); $('#tr-save').disabled = true; }
-  } else if (C.todayNum() !== today) {
-    refresh();
+    if (tr.n !== null && tr.dirty && commitDraft()) {
+      $('#tr-save').disabled = true;
+      if (askResolve) answerAsk('stay');
+    }
+  } else {
+    checkNewDay();
+    if (swReg) swReg.update().catch(() => {});
   }
 });
+setInterval(checkNewDay, 60000);
 
 // ---------------------------------------------------------------------------
 // Start
@@ -996,7 +1036,9 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     reloading = true;
     location.reload();
   });
-  navigator.serviceWorker.register('./sw.js').then(reg => reg.update()).catch(() => { /* offline-Cache ist nur Komfort */ });
+  navigator.serviceWorker.register('./sw.js')
+    .then(reg => { swReg = reg; return reg.update(); })
+    .catch(() => { /* offline-Cache ist nur Komfort */ });
 }
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 

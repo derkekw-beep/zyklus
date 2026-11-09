@@ -41,35 +41,92 @@ function stdev(a) {
 
 export const MAX_GAP = 2;     // so viele vergessene Tage mitten in einer Periode trennen sie nicht
 
+export const EARLY_TOLERANCE = 7; // eine schwache Blutung so viele Tage vor dem erwarteten Termin ist noch "Periode"
+const FLOW_RANK = { leicht: 1, mittel: 2, stark: 3, sehrstark: 4 };
+const flowOf = e => Math.max(1, ...e.tags.period.map(f => FLOW_RANK[f] || 1));
+
 // Schritt 1: zusammenhängende Blutungstage (Lücken bis MAX_GAP Tage) zu Blöcken zusammenfassen.
 export function findEpisodes(days, today = Infinity) {
-  const nums = [];
+  const items = [];
   for (const [iso, e] of Object.entries(days || {})) {
     if (!isPeriodDay(e)) continue;
     const n = toNum(iso);
-    if (n <= today) nums.push(n);
+    if (n <= today) items.push([n, flowOf(e)]);
   }
-  nums.sort((a, b) => a - b);
+  items.sort((a, b) => a[0] - b[0]);
   const out = [];
-  for (const n of nums) {
+  for (const [n, f] of items) {
     const last = out[out.length - 1];
-    if (last && n - last.end <= MAX_GAP + 1) last.end = n;
-    else out.push({ start: n, end: n });
+    if (last && n - last.end <= MAX_GAP + 1) {
+      last.end = n;
+      last.days++;
+      last.maxFlow = Math.max(last.maxFlow, f);
+    } else {
+      out.push({ start: n, end: n, days: 1, maxFlow: f });
+    }
   }
   return out;
 }
 
-// Schritt 2: Ein Block startet nur dann einen neuen Zyklus, wenn er mindestens MIN_CYCLE Tage nach dem
-// letzten Periodenbeginn liegt. Frühere Blutungen sind Zwischenblutungen: Sie stehen im Kalender,
-// verschieben aber weder Zyklusbeginn noch Vorhersage und zählen nicht zur Periodendauer.
-export function findPeriods(days, today = Infinity) {
+// "schwacher" Block: höchstens 2 eingetragene Tage und nur "Leicht" – kann Periode oder Zwischenblutung sein
+const isWeak = ep => ep.days <= 2 && ep.maxFlow <= 1;
+
+// Schritt 2: Welche Blöcke beginnen einen neuen Zyklus? Alle anderen sind Zwischenblutungen: Sie stehen im
+// Kalender, verschieben aber weder Zyklusbeginn noch Vorhersage und zählen nicht zur Periodendauer.
+//  - Ein Block weniger als MIN_CYCLE Tage nach dem letzten Periodenbeginn ist immer Zwischenblutung.
+//  - Ein schwacher Block ist Zwischenblutung, wenn innerhalb von MIN_CYCLE Tagen eine kräftigere Blutung
+//    folgt, oder wenn er mehr als EARLY_TOLERANCE Tage vor dem erwarteten Termin liegt. Sobald dort mehr
+//    Tage oder eine stärkere Blutung eingetragen werden, zählt er automatisch als Periode.
+export function findPeriods(days, today = Infinity, defaultCycle = 28) {
+  const eps = findEpisodes(days, today);
   const out = [];
-  for (const ep of findEpisodes(days, today)) {
+  const lens = [];
+  for (let i = 0; i < eps.length; i++) {
+    const ep = eps[i];
     const cur = out[out.length - 1];
-    if (cur && ep.start - cur.start < MIN_CYCLE) cur.extra.push(ep);
-    else out.push({ start: ep.start, end: ep.end, extra: [] });
+    let extra = !!cur && ep.start - cur.start < MIN_CYCLE;
+    if (!extra && isWeak(ep)) {
+      const stronger = eps.slice(i + 1).some(e => e.start - ep.start < MIN_CYCLE && !isWeak(e));
+      const typical = lens.length ? median(lens) : defaultCycle;
+      const tooEarly = !!cur && ep.start < cur.start + typical - EARLY_TOLERANCE;
+      extra = stronger || tooEarly;
+    }
+    if (extra) {
+      if (cur) cur.extra.push(ep);
+      continue;
+    }
+    if (cur) lens.push(ep.start - cur.start);
+    out.push({ start: ep.start, end: ep.end, days: ep.days, extra: [] });
   }
   return out;
+}
+
+// Lage eines Tages im Zyklus als Anteil 0..1 (0 = Periodenbeginn). null, wenn unbekannt.
+export function cyclePhase(n, periods, avgLen) {
+  let i = -1;
+  for (let k = 0; k < periods.length; k++) {
+    if (periods[k].start <= n) i = k;
+    else break;
+  }
+  if (i < 0) return null;
+  const len = i + 1 < periods.length ? periods[i + 1].start - periods[i].start : avgLen;
+  const d = n - periods[i].start;
+  if (d >= len || len > MAX_CYCLE) return null;
+  return (d + 0.5) / len;
+}
+
+// Typischer Zeitpunkt mehrerer Einträge als Kreis-Mittelwert: Tag 27, 28, 1, 2 ergibt "um den
+// Periodenbeginn" und nicht "Tag 15". null, wenn zu wenige oder zu verstreut.
+export function typicalPhase(fracs) {
+  if (fracs.length < 2) return null;
+  let x = 0, y = 0;
+  for (const f of fracs) {
+    x += Math.cos(2 * Math.PI * f);
+    y += Math.sin(2 * Math.PI * f);
+  }
+  if (Math.hypot(x, y) / fracs.length < 0.5) return null;
+  const m = Math.atan2(y, x) / (2 * Math.PI);
+  return m < 0 ? m + 1 : m;
 }
 
 export function cycleDayOf(n, periods) {
@@ -84,7 +141,8 @@ export function cycleDayOf(n, periods) {
 export function analyze(data, today) {
   const st = (data && data.settings) || {};
   const luteal = clamp(Math.round(st.lutealLength) || 14, 10, 16);
-  const periods = findPeriods(data && data.days, today);
+  const defaultCycle = clamp(Math.round(st.cycleLength) || 28, 20, 45);
+  const periods = findPeriods(data && data.days, today, defaultCycle);
   const last = periods.length ? periods[periods.length - 1] : null;
 
   // Zyklen = Abstand von Periodenbeginn zu Periodenbeginn
@@ -99,23 +157,28 @@ export function analyze(data, today) {
       note: '',
     });
   }
+  // Vergessene Periode erkennen: ein Zyklus deutlich (über 60 %) länger als üblich. "Üblich" ist ab 3 Zyklen
+  // der Median, bei 2 Zyklen der kürzere, bei einem einzigen die eingestellte Standardlänge.
   const plausible = cycles.filter(c => c.length >= MIN_CYCLE && c.length <= MAX_CYCLE).map(c => c.length);
-  const med = plausible.length >= 3 ? median(plausible) : null;
+  const ref = plausible.length >= 3 ? median(plausible)
+    : plausible.length === 2 ? Math.min(...plausible)
+      : plausible.length === 1 ? defaultCycle : null;
   for (const c of cycles) {
     if (c.length < MIN_CYCLE) c.note = 'sehr kurz – Zwischenblutung?';
     else if (c.length > MAX_CYCLE) c.note = 'sehr lang – fehlt ein Eintrag?';
-    else if (med !== null && c.length > med * 1.6) c.note = 'fehlt vermutlich ein Eintrag';
+    else if (ref !== null && c.length > ref * 1.6) c.note = 'fehlt vermutlich ein Eintrag';
   }
   const used = cycles.filter(c => !c.note).slice(-RECENT);
   for (const c of used) c.used = true;
   const lens = used.map(c => c.length);
-  const cycleLen = lens.length ? Math.round(mean(lens)) : clamp(Math.round(st.cycleLength) || 28, 20, 45);
+  const cycleLen = lens.length ? Math.round(mean(lens)) : defaultCycle;
   const spread = lens.length >= 3 ? Math.round(stdev(lens)) : null;
 
-  // Periodendauer: die letzte Periode nur mitzählen, wenn sie sicher vorbei ist
-  const ongoing = !!last && last.end >= today - 1;
+  // Periodendauer: die letzte Periode nur mitzählen, wenn sie sicher vorbei ist (bis zu MAX_GAP
+  // vergessene Tage gelten noch als "läuft"). Einzelne eingetragene Tage verfälschen den Schnitt nicht.
+  const ongoing = !!last && last.end >= today - (MAX_GAP + 1);
   const finished = ongoing ? periods.slice(0, -1) : periods;
-  const plens = finished.map(p => p.end - p.start + 1).filter(n => n <= 14).slice(-RECENT);
+  const plens = finished.map(p => p.end - p.start + 1).filter(n => n >= 2 && n <= 14).slice(-RECENT);
   const periodLen = plens.length ? Math.round(mean(plens)) : clamp(Math.round(st.periodLength) || 5, 2, 10);
 
   const res = {
@@ -146,7 +209,8 @@ export function analyze(data, today) {
 
   // Eisprung ≈ nächste Periode minus Lutealphase, fruchtbar 5 Tage davor bis 1 Tag danach
   const windowFor = cycleStart => {
-    const ov = cycleStart + cycleLen - luteal;
+    // bei sehr kurzen Zyklen nie in die Periode hinein schätzen
+    const ov = Math.max(cycleStart + cycleLen - luteal, cycleStart + periodLen);
     return { start: ov - 5, end: ov + 1, ov };
   };
   const windows = [windowFor(last.start)];

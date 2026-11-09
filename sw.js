@@ -1,6 +1,6 @@
 // Offline-Cache für den App-Code. Einträge liegen NICHT hier, sondern im localStorage.
 // Bei jeder Änderung an der App die Versionsnummer erhöhen, dann holt sich das iPhone die neuen Dateien.
-const VERSION = 'zyklus-v1';
+const VERSION = 'zyklus-v2';
 const FILES = [
   './',
   './index.html',
