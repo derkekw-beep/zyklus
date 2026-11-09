@@ -1605,15 +1605,25 @@ render();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   const hadController = !!navigator.serviceWorker.controller;
   let reloading = false;
-  navigator.serviceWorker.addEventListener('controllerchange', () => {
-    // Nur bei einem echten Update neu laden, nicht bei der ersten Installation und nie mitten im Tracken
+  // Neue Version aktiv: neu laden, damit sie sofort zu sehen ist – nicht bei der ersten Installation
+  // und nie mitten im Tracken (dann beim nächsten Öffnen)
+  const applyUpdate = () => {
     if (!hadController || reloading) return;
     if (tr.n !== null) { toast('Update geladen – wird beim nächsten Öffnen aktiv'); return; }
     reloading = true;
     location.reload();
-  });
+  };
+  navigator.serviceWorker.addEventListener('controllerchange', applyUpdate);
   navigator.serviceWorker.register('./sw.js')
-    .then(reg => { swReg = reg; return reg.update(); })
+    .then(reg => {
+      swReg = reg;
+      // zusätzlich über den Zustand des neuen Service Workers – iOS meldet controllerchange nicht immer zuverlässig
+      reg.addEventListener('updatefound', () => {
+        const nw = reg.installing;
+        if (nw) nw.addEventListener('statechange', () => { if (nw.state === 'activated') applyUpdate(); });
+      });
+      return reg.update();
+    })
     .catch(() => { /* offline-Cache ist nur Komfort */ });
 }
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
