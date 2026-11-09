@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<title>Zyklus</title>
+<meta name="description" content="Privater Zykluskalender. Alle Einträge bleiben auf dem Gerät.">
+<meta name="theme-color" content="#fbf7f4" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#161114" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Zyklus">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="style.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="top">
+  <h1 id="title">Hallo</h1>
+</header>
+
+<main>
+  <section id="view-home" class="view"></section>
+  <section id="view-cal" class="view" hidden></section>
+  <section id="view-stats" class="view" hidden></section>
+  <section id="view-settings" class="view" hidden></section>
+  <noscript><p class="card">Diese App braucht JavaScript.</p></noscript>
+</main>
+
+<nav class="tabs" aria-label="Bereiche">
+  <button data-tab="home" aria-current="page">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2c3.6 4.3 6.2 7.7 6.2 10.9a6.2 6.2 0 0 1-12.4 0c0-3.2 2.6-6.6 6.2-10.9z"/></svg>
+    <span>Heute</span>
+  </button>
+  <button data-tab="cal">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+    <span>Kalender</span>
+  </button>
+  <button data-tab="stats">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20v-8M12 20V5M19 20v-5"/></svg>
+    <span>Statistik</span>
+  </button>
+  <button data-tab="settings">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg>
+    <span>Mehr</span>
+  </button>
+</nav>
+
+<!-- Tracking-Bildschirm (Vollbild) -->
+<div id="tracker" class="tracker" role="dialog" aria-modal="true" aria-labelledby="tr-title" hidden>
+  <div class="tr-top">
+    <div class="tr-head">
+      <button class="round-btn" data-act="tr-close" aria-label="Schließen">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+      <div id="tr-title" class="tr-title"></div>
+      <button class="round-btn" data-act="tr-customize" aria-label="Kategorien anpassen">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/></svg>
+      </button>
+    </div>
+    <div id="tr-week" class="week"></div>
+  </div>
+  <div id="tr-scroll" class="tr-scroll">
+    <label class="search">
+      <input id="tr-search" type="search" placeholder="Tracking-Optionen suchen" autocomplete="off" enterkeyhint="search" aria-label="Tracking-Optionen suchen">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L20 20"/></svg>
+    </label>
+    <div id="tr-body"></div>
+  </div>
+  <div class="tr-save">
+    <button id="tr-save" class="btn save" data-act="tr-save" disabled>Speichern</button>
+  </div>
+
+  <div id="tr-ask" class="tr-custom tr-ask" role="alertdialog" aria-modal="true" aria-labelledby="tr-ask-title" hidden>
+    <div class="tr-custom-card">
+      <h2 id="tr-ask-title">Änderungen speichern?</h2>
+      <p class="muted">Du hast für diesen Tag etwas eingetragen, aber noch nicht gespeichert.</p>
+      <button class="btn primary wide" data-ask="save">Speichern</button>
+      <button class="btn wide" data-ask="discard">Verwerfen</button>
+      <button class="btn wide ghost" data-ask="stay">Weiter bearbeiten</button>
+    </div>
+  </div>
+
+  <div id="tr-custom" class="tr-custom" hidden>
+    <div class="tr-custom-card">
+      <div class="tr-custom-head">
+        <h2>Kategorien anpassen</h2>
+        <button class="btn small" data-act="tr-customize-done">Fertig</button>
+      </div>
+      <p class="muted">Ausgeblendete Kategorien tauchen im Tracking nicht mehr auf. Bereits gespeicherte Einträge bleiben erhalten.</p>
+      <div id="tr-custom-list"></div>
+    </div>
+  </div>
+</div>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<input type="file" id="import-file" accept="application/json,.json" hidden>
+</body>
+</html>
