@@ -930,7 +930,7 @@ function renderSettings() {
       </ul>
     </details>
     <div class="card"><button class="btn danger wide" data-act="wipe">Alle Daten löschen</button></div>
-    <p class="foot">Zyklus ${APP_VERSION} · ${plural(nDays, 'Tag', 'Tage')} eingetragen<br><span class="made">made with ❤️ by Dogu and for Privacy</span><br><button class="link" data-act="check-update">Nach Updates suchen</button></p>`;
+    <p class="foot">Zyklus ${APP_VERSION} · ${plural(nDays, 'Tag', 'Tage')} eingetragen<br><span class="made">Made with ❤️ by Dogu · Privacy by Design</span><br><button class="link" data-act="check-update">Nach Updates suchen</button></p>`;
 }
 
 function stepSetting(key, dir) {
