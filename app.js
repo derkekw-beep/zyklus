@@ -3,6 +3,7 @@ import { CATS, CHIP_CATS, CAT, OPT, NOTE_MAX, TAG_MAX, choose, toggle, cleanTags
 import * as S from './sleep.js';
 import { NOTES, APP_VERSION, FEATURES } from './notes.js';
 import { parseClue, looksLikeClue, readImportFile, mergeDays } from './importer.js';
+import { buildIcs, reminderEvents } from './ics.js';
 
 // ---------------------------------------------------------------------------
 // Grundlagen
@@ -57,8 +58,9 @@ function freshData() {
     app: 'zyklus',
     version: 1,
     days: {},
-    settings: { name: '', cycleLength: 28, periodLength: 5, lutealLength: 14, sleepGoal: 480, showFertile: true, hiddenCats: [], customTags: [], pillName: '', zoomLock: true },
-    meta: { created: new Date().toISOString(), lastBackup: null, seenVersion: null, sleepStart: null, sleepPill: false, sleepPillAt: null, pillSince: C.toIso(C.todayNum()) },
+    settings: { name: '', cycleLength: 28, periodLength: 5, lutealLength: 14, sleepGoal: 480, showFertile: true, hiddenCats: [], customTags: [], pillName: '', zoomLock: true,
+      remind: { period: true, fertile: false, pill: false, pillTime: 21 * 60, track: false, trackTime: 20 * 60 + 30 } },
+    meta: { created: new Date().toISOString(), lastBackup: null, seenVersion: null, sleepStart: null, sleepPill: false, sleepPillAt: null, pillSince: C.toIso(C.todayNum()), icsExport: null },
   };
 }
 // sleep: Minuten, bed/wake: Uhrzeit (Min. seit Mitternacht) der Nacht VOR diesem Tag, pill: Schlaftablette in dieser Nacht
@@ -118,6 +120,10 @@ function normalize(o) {
   }
   if (typeof s.showFertile === 'boolean') d.settings.showFertile = s.showFertile;
   if (typeof s.zoomLock === 'boolean') d.settings.zoomLock = s.zoomLock;
+  if (s.remind && typeof s.remind === 'object') {
+    for (const k of ['period', 'fertile', 'pill', 'track']) if (typeof s.remind[k] === 'boolean') d.settings.remind[k] = s.remind[k];
+    for (const k of ['pillTime', 'trackTime']) if (S.isTime(s.remind[k])) d.settings.remind[k] = s.remind[k];
+  }
   if (typeof s.name === 'string') d.settings.name = s.name.trim().slice(0, 30);
   if (typeof s.pillName === 'string') d.settings.pillName = s.pillName.trim().slice(0, PILL_MAX);
   if (Array.isArray(s.hiddenCats)) d.settings.hiddenCats = s.hiddenCats.filter(id => CAT[id] && !CAT[id].fixed);
@@ -125,6 +131,9 @@ function normalize(o) {
   if (o.meta && typeof o.meta.created === 'string') d.meta.created = o.meta.created;
   if (o.meta && typeof o.meta.lastBackup === 'string' && Number.isFinite(Date.parse(o.meta.lastBackup))) d.meta.lastBackup = o.meta.lastBackup;
   if (o.meta && typeof o.meta.seenVersion === 'string') d.meta.seenVersion = o.meta.seenVersion;
+  if (o.meta && o.meta.icsExport && typeof o.meta.icsExport.at === 'string') {
+    d.meta.icsExport = { at: o.meta.icsExport.at, period: C.isValidIso(o.meta.icsExport.period) ? o.meta.icsExport.period : null };
+  }
   // Schlaf-Timer und abgehakte Tablette: bis 7 Tage übernehmen, settleSleep() räumt dann sauber auf
   const recent = t => Number.isFinite(t) && Date.now() - t >= 0 && Date.now() - t < 7 * 86400e3;
   if (o.meta && recent(o.meta.sleepStart)) d.meta.sleepStart = o.meta.sleepStart;
@@ -485,6 +494,9 @@ function renderHome() {
 
   lastSleepMode = sleepMode();
   out.push(sleepCard());
+  if (icsOutdated()) {
+    out.push(`<div class="card remind-card"><div><b>🔔 Neue Vorhersage</b><p>Die Kalender-Erinnerung für die nächste Periode (${esc(fShort(A.nextStart))}) ist noch nicht in deinem Kalender.</p></div><button class="btn small primary" data-act="ics-export">Übernehmen</button></div>`);
+  }
 
   if (e) {
     out.push(`<div class="card"><div class="card-head"><h3>Heute eingetragen</h3><button class="link" data-act="track-today">Bearbeiten</button></div>${entrySummary(e)}</div>`);
@@ -894,6 +906,7 @@ function renderSettings() {
         ? `<div class="tag-list">${s.customTags.map(t => `<span class="tag-item">${esc(t)}<button data-del-tag="${esc(t)}" aria-label="Tag ${esc(t)} löschen">✕</button></span>`).join('')}</div>`
         : '<p class="muted small">Noch keine. Eigene Tags legst du beim Tracken unter „Meine Tags“ an.</p>'}
     </details>
+    ${remindCard()}
     <div class="card"><h3>💾 Backup</h3>
       <p class="muted small">Deine Einträge liegen nur auf diesem Gerät. Wird die App gelöscht oder das Handy gewechselt, sind sie ohne Backup weg. Das Backup ist eine Datei, die du z. B. in „Dateien“ oder iCloud ablegst.</p>
       <div class="btn-row"><button class="btn primary" data-act="export">Backup speichern</button><button class="btn" data-act="import">Backup laden</button></div>
@@ -1257,6 +1270,52 @@ async function importBackup(file) {
     toast('Diese Datei ist kein gültiges Zyklus-Backup');
   }
 }
+// --- Erinnerungen über den iPhone-Kalender (.ics) ------------------------------------------
+function remindCard() {
+  const r = state.settings.remind;
+  const ex = state.meta.icsExport;
+  const sw = (key, title, sub) => `<label class="row"><div><div class="row-title">${title}</div><div class="row-sub">${sub}</div></div>
+      <span class="switch"><input type="checkbox" data-remind="${key}" ${r[key] ? 'checked' : ''}><span></span></span></label>`;
+  return `<div class="card"><h3>🔔 Erinnerungen</h3>
+    <p class="muted small">Die App legt Termine mit Erinnerung in deinem iPhone-Kalender an – ohne Server, alles bleibt auf dem iPhone. Tipp: in der Kalender-Abfrage einen eigenen Kalender „Zyklus“ wählen.</p>
+    ${sw('period', 'Nächste Periode', '2 Tage vorher und am Tag selbst')}
+    ${sw('fertile', 'Fruchtbare Tage', 'Kalender-Schätzung, nicht sinnvoll mit der Pille')}
+    ${sw('pill', 'Pille täglich', 'Wiederkehrende Erinnerung')}
+    ${r.pill ? `<label class="row compact"><span class="row-title">um</span><input id="remind-pill-time" class="time-input" type="time" value="${S.fmtTime(r.pillTime)}"></label>` : ''}
+    ${sw('track', 'Täglich ans Tracken erinnern', 'Wiederkehrende Erinnerung')}
+    ${r.track ? `<label class="row compact"><span class="row-title">um</span><input id="remind-track-time" class="time-input" type="time" value="${S.fmtTime(r.trackTime)}"></label>` : ''}
+    <div class="btn-row"><button class="btn primary" data-act="ics-export">📅 In den Kalender übernehmen</button></div>
+    ${ex ? `<p class="row-sub">Zuletzt übernommen am ${esc(fDMY(C.todayNum(new Date(ex.at))))}${ex.period ? ` · Periode ${esc(fDMY(C.toNum(ex.period)))}` : ''}</p>` : ''}
+    <p class="row-sub">Tägliche Erinnerungen musst du nur einmal übernehmen. Die Perioden-Erinnerung nach jeder neuen Periode erneut – die App sagt dir auf „Heute“ Bescheid.</p>
+  </div>`;
+}
+// Gibt es eine neue Vorhersage, die noch nicht im Kalender ist? (nur, wenn schon einmal übernommen)
+function icsOutdated() {
+  const ex = state.meta.icsExport;
+  if (!ex || !state.settings.remind.period || !A.hasData || !(A.nextStart > today)) return false;
+  return ex.period !== C.toIso(A.nextStart);
+}
+function exportIcs() {
+  const r = state.settings.remind;
+  const { events, notes } = reminderEvents(A, r, today);
+  if (!events.length) { toast(notes[0] || 'Bitte zuerst eine Erinnerung einschalten'); return; }
+  const file = new File([buildIcs(events)], 'zyklus-erinnerungen.ics', { type: 'text/calendar' });
+  // iOS öffnet .ics direkt im Kalender („Alle hinzufügen“)
+  const url = URL.createObjectURL(file);
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank'; // eigenes Fenster, damit die App selbst nicht weg-navigiert
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  state.meta.icsExport = { at: new Date().toISOString(), period: r.period && A.hasData && A.nextStart > today ? C.toIso(A.nextStart) : null };
+  save();
+  if (notes.length) setTimeout(() => toast(notes[0]), 400);
+  render();
+}
+
 // --- Import aus Clue ---------------------------------------------------------------------
 const UNDO_KEY = `${KEY}-vor-import`;
 function undoInfo() {
@@ -1515,6 +1574,7 @@ const ACTIONS = {
   'import'() { $('#import-file').click(); },
   'wipe'() { wipe(); },
   'clue-import'() { $('#clue-file').click(); },
+  'ics-export'() { exportIcs(); },
   'undo-import'() { undoImport(); },
 };
 
@@ -1596,6 +1656,13 @@ document.addEventListener('change', ev => {
   } else if (t.id === 'pillname-setting') {
     state.settings.pillName = t.value.trim().slice(0, PILL_MAX);
     save();
+  } else if (t.dataset.remind) {
+    state.settings.remind[t.dataset.remind] = t.checked;
+    save();
+    if (tr.n === null && ui.tab === 'settings') renderSettings();
+  } else if (t.id === 'remind-pill-time' || t.id === 'remind-track-time') {
+    const v = S.parseTime(t.value);
+    if (v !== null) { state.settings.remind[t.id === 'remind-pill-time' ? 'pillTime' : 'trackTime'] = v; save(); }
   } else if (t.id === 'clue-file') {
     const f = t.files && t.files[0];
     t.value = '';

@@ -520,3 +520,8 @@ details.fold[open] > summary { margin-bottom: 10px; }
 /* pan-x pan-y erlaubt Scrollen, aber kein Zwei-Finger-Zoom und kein Doppeltipp-Zoom */
 html.nozoom, html.nozoom body { touch-action: pan-x pan-y; }
 html.nozoom button, html.nozoom .chip, html.nozoom .day, html.nozoom .action { touch-action: manipulation; }
+
+/* --- Version 1.8: Kalender-Erinnerungen ---------------------------------------------- */
+.remind-card { display: flex; gap: 12px; align-items: center; justify-content: space-between; background: linear-gradient(160deg, var(--news-tint), var(--card) 75%); }
+.remind-card p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+.time-input { width: 7.5em; height: 44px; border: 0; border-radius: 12px; padding: 0 10px; background: var(--card-2); color: var(--text); font: 650 17px -apple-system, BlinkMacSystemFont, system-ui, sans-serif; text-align: center; -webkit-appearance: none; appearance: none; }

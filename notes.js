@@ -3,6 +3,15 @@
 
 export const NOTES = [
   {
+    v: '1.8',
+    date: '09.11.2026',
+    items: [
+      'Erinnerungen über den iPhone-Kalender: nächste Periode (2 Tage vorher und am Tag), auf Wunsch fruchtbare Tage',
+      'Tägliche Erinnerungen für die Pille und fürs Tracken, Uhrzeit frei wählbar',
+      'Ohne Server – alles bleibt auf dem iPhone',
+    ],
+  },
+  {
     v: '1.7',
     date: '09.11.2026',
     items: [
@@ -21,7 +30,7 @@ export const NOTES = [
   },
   {
     v: '1.5',
-    date: '09.11.2026',
+    date: '08.11.2026',
     items: [
       'Jahresübersicht im Kalender: auf den Monatsnamen tippen – alle 12 Monate eines Jahres auf einen Blick',
       'Jahr mit ‹ › oder Wischen wechseln, Monat antippen öffnet ihn direkt',
@@ -30,7 +39,7 @@ export const NOTES = [
   },
   {
     v: '1.4',
-    date: '09.11.2026',
+    date: '08.11.2026',
     items: [
       'Daten aus Clue übernehmen: unter „Mehr“ → Backup die Clue-Datei wählen – deine Einträge hier bleiben erhalten, Clue ergänzt nur',
       'Vorschau vor dem Import und „Import rückgängig“',
@@ -39,7 +48,7 @@ export const NOTES = [
   },
   {
     v: '1.3',
-    date: '09.11.2026',
+    date: '08.11.2026',
     items: [
       'Zyklus-Rad auf „Heute“: Ring drehen und jeden Tag ansehen – Zyklustag, Phase, Vorhersage und deine Einträge',
       'Vergangene Zyklen und die nächsten vorhergesagten Zyklen lassen sich durchdrehen, Pfeile für einzelne Tage',
@@ -49,7 +58,7 @@ export const NOTES = [
   },
   {
     v: '1.2',
-    date: '09.11.2026',
+    date: '07.11.2026',
     items: [
       'Begrüßung passend zur Tageszeit: Guten Morgen, Guten Tag, Guten Abend, Gute Nacht',
       'Schlaf-Tracking: abends „Schlafen gehen“ antippen, morgens „Aufgewacht“ – die Dauer rechnet die App',
@@ -62,7 +71,7 @@ export const NOTES = [
   },
   {
     v: '1.1',
-    date: '09.11.2026',
+    date: '07.11.2026',
     items: [
       'Zwischenblutung wird erkannt und verschiebt die Vorhersage nicht mehr',
       'Bis zu zwei vergessene Tage trennen eine Periode nicht',
@@ -76,7 +85,7 @@ export const NOTES = [
   },
   {
     v: '1.0',
-    date: '09.11.2026',
+    date: '07.11.2026',
     items: [
       'Erste Version: Zyklus-Ring, Vorhersage der nächsten Periode und der fruchtbaren Tage',
       'Tracking mit Wochenleiste, Suche und vielen Kategorien',
@@ -97,6 +106,7 @@ export const FEATURES = [
   ['🎡', 'Zyklus-Rad', 'Auf „Heute“ den Ring drehen: Zyklustag, Phase und Einträge für jeden Tag, auch vergangene und kommende Zyklen.'],
   ['📅', 'Kalender', 'Periode, Vorhersage, fruchtbare Tage, Eisprung und alle Einträge auf einen Blick. Vergangene Perioden schnell nachtragen.'],
   ['📊', 'Statistik', 'Zyklusverlauf, Durchschnittswerte und Muster – zum Beispiel an welchem Zyklustag Krämpfe meistens auftreten.'],
+  ['🔔', 'Erinnerungen', 'Termine mit Erinnerung im iPhone-Kalender: nächste Periode, fruchtbare Tage, Pille und Tracken.'],
   ['💾', 'Backup & Import', 'Alle Daten als Datei sichern (z. B. in iCloud Drive) und wiederherstellen. Daten aus Clue übernehmen.'],
   ['🔒', 'Privat', 'Kein Konto, keine Cloud, keine Werbung. Alles bleibt auf diesem iPhone.'],
 ];
