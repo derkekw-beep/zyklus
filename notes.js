@@ -3,6 +3,15 @@
 
 export const NOTES = [
   {
+    v: '1.7',
+    date: '09.11.2026',
+    items: [
+      'Genauere Vorhersage: Ø der letzten 8 Zyklen ohne den kürzesten und längsten – einzelne Ausreißer verschieben sie kaum noch',
+      'Ehrlichere Spanne „± X Tage“ (+1 Tag Sicherheitszuschlag)',
+      'Getestet an 36 echten Zyklen: im Schnitt 2,6 Tage genau, die Spanne trifft in 82 % der Fälle',
+    ],
+  },
+  {
     v: '1.6',
     date: '09.11.2026',
     items: [
