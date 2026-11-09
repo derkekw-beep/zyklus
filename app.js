@@ -32,7 +32,7 @@ const fMonth = fmt({ month: 'long', year: 'numeric' });
 const WD1 = ['M', 'D', 'M', 'D', 'F', 'S', 'S'];
 const WD2 = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
 const weekdayIdx = n => (D(n).getUTCDay() + 6) % 7;
-const fmtSleep = m => `${Math.floor(m / 60)} Std.${m % 60 ? ` ${m % 60} Min.` : ''}`;
+const fmtSleep = m => (m < 60 ? `${m} Min.` : `${Math.floor(m / 60)} Std.${m % 60 ? ` ${m % 60} Min.` : ''}`);
 const fmtDiff = m => `${m >= 0 ? '+' : '−'}${Math.abs(m) >= 60 ? fmtSleep(Math.abs(m)) : `${Math.abs(m)} Min.`}`;
 const nowMin = (d = new Date()) => d.getHours() * 60 + d.getMinutes();
 function greeting(d = new Date()) {
