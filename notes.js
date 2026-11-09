@@ -3,6 +3,14 @@
 
 export const NOTES = [
   {
+    v: '1.6',
+    date: '09.11.2026',
+    items: [
+      'Kein versehentliches Reinzoomen mehr (zwei Finger oder Doppeltippen)',
+      'Unter „Mehr“ → Persönlich lässt sich das Zoomen wieder erlauben',
+    ],
+  },
+  {
     v: '1.5',
     date: '09.11.2026',
     items: [

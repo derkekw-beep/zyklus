@@ -515,3 +515,8 @@ details.fold[open] > summary { margin-bottom: 10px; }
 .md.pred { background: transparent; box-shadow: inset 0 0 0 1.5px var(--period); }
 .md.period { background: var(--period); box-shadow: none; }
 .md.today { box-shadow: 0 0 0 1.5px var(--text); }
+
+/* --- Version 1.6: Zoom-Sperre ------------------------------------------------------ */
+/* pan-x pan-y erlaubt Scrollen, aber kein Zwei-Finger-Zoom und kein Doppeltipp-Zoom */
+html.nozoom, html.nozoom body { touch-action: pan-x pan-y; }
+html.nozoom button, html.nozoom .chip, html.nozoom .day, html.nozoom .action { touch-action: manipulation; }

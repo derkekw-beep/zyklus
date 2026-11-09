@@ -57,7 +57,7 @@ function freshData() {
     app: 'zyklus',
     version: 1,
     days: {},
-    settings: { name: '', cycleLength: 28, periodLength: 5, lutealLength: 14, sleepGoal: 480, showFertile: true, hiddenCats: [], customTags: [], pillName: '' },
+    settings: { name: '', cycleLength: 28, periodLength: 5, lutealLength: 14, sleepGoal: 480, showFertile: true, hiddenCats: [], customTags: [], pillName: '', zoomLock: true },
     meta: { created: new Date().toISOString(), lastBackup: null, seenVersion: null, sleepStart: null, sleepPill: false, sleepPillAt: null, pillSince: C.toIso(C.todayNum()) },
   };
 }
@@ -117,6 +117,7 @@ function normalize(o) {
     if (Number.isFinite(n)) d.settings[k] = Math.min(hi, Math.max(lo, n));
   }
   if (typeof s.showFertile === 'boolean') d.settings.showFertile = s.showFertile;
+  if (typeof s.zoomLock === 'boolean') d.settings.zoomLock = s.zoomLock;
   if (typeof s.name === 'string') d.settings.name = s.name.trim().slice(0, 30);
   if (typeof s.pillName === 'string') d.settings.pillName = s.pillName.trim().slice(0, PILL_MAX);
   if (Array.isArray(s.hiddenCats)) d.settings.hiddenCats = s.hiddenCats.filter(id => CAT[id] && !CAT[id].fixed);
@@ -868,6 +869,9 @@ function renderSettings() {
     <div class="card"><h3>👤 Persönlich</h3>
       <label class="row"><div><div class="row-title">Dein Name</div><div class="row-sub">Für die Begrüßung, bleibt nur auf diesem Gerät.</div></div>
         <input id="name-input" class="name-input" type="text" maxlength="30" autocomplete="given-name" placeholder="Vorname" value="${esc(s.name)}"></label>
+      <label class="row"><div><div class="row-title">Zoomen sperren</div><div class="row-sub">Kein versehentliches Reinzoomen mit zwei Fingern oder Doppeltippen.</div></div>
+        <span class="switch"><input type="checkbox" data-setting="zoomLock" ${s.zoomLock ? 'checked' : ''}><span></span></span>
+      </label>
     </div>
     <div class="card"><h3>🔮 Vorhersage</h3>
       ${stepper('cycleLength', 'Zykluslänge', A.usedCycles ? `Gerade nicht im Einsatz – die App nutzt deinen Schnitt (${A.cycleLen} Tage).` : 'Gilt, bis ein ganzer Zyklus eingetragen ist.')}
@@ -1568,6 +1572,7 @@ document.addEventListener('change', ev => {
   const t = ev.target;
   if (t.dataset.setting) {
     state.settings[t.dataset.setting] = t.checked;
+    if (t.dataset.setting === 'zoomLock') applyZoomLock();
     commit();
   } else if (t.dataset.catToggle) {
     const id = t.dataset.catToggle;
@@ -1730,6 +1735,28 @@ function toast(msg) {
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
 }
+
+// --- Zoom-Sperre: Seitenkopf (viewport), CSS (touch-action) und Safaris eigene Zoom-Gesten ----------
+const VIEWPORT_LOCKED = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover';
+const VIEWPORT_FREE = 'width=device-width, initial-scale=1, viewport-fit=cover';
+function applyZoomLock() {
+  const lock = state.settings.zoomLock !== false;
+  document.documentElement.classList.toggle('nozoom', lock);
+  const vp = document.querySelector('meta[name="viewport"]');
+  if (vp) vp.setAttribute('content', lock ? VIEWPORT_LOCKED : VIEWPORT_FREE);
+}
+for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
+  document.addEventListener(type, ev => { if (state.settings.zoomLock !== false) ev.preventDefault(); }, { passive: false });
+}
+// Doppeltippen zum Zoomen auch auf älteren iOS-Versionen abfangen (zwei Tipps kurz hintereinander)
+let lastTouchEnd = 0;
+document.addEventListener('touchend', ev => {
+  if (state.settings.zoomLock === false) return;
+  const now = Date.now();
+  if (now - lastTouchEnd < 300 && ev.cancelable && !ev.target.closest('input, textarea, select, button, label, [data-act], #wheel')) ev.preventDefault();
+  lastTouchEnd = now;
+}, { passive: false });
+applyZoomLock();
 
 settleSleep();
 if (needsSave && storageOk) save();
