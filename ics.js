@@ -30,16 +30,18 @@ function fold(line) {
 }
 
 // events: [{ uid, summary, description?, day, endDay? (ganztägig, exklusiv), time? (Minuten), daily?, alarms: [TRIGGER] }]
+// Feste UIDs + steigende SEQUENCE: Beim erneuten Übernehmen ersetzt der Kalender den Termin statt ihn zu verdoppeln.
 export function buildIcs(events, stamp = new Date()) {
+  const sequence = Math.max(0, Math.floor((stamp.getTime() - Date.UTC(2026, 0, 1)) / 1000));
   const dtstamp = `${stamp.getUTCFullYear()}${pad(stamp.getUTCMonth() + 1)}${pad(stamp.getUTCDate())}T${pad(stamp.getUTCHours())}${pad(stamp.getUTCMinutes())}${pad(stamp.getUTCSeconds())}Z`;
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Zyklus//Erinnerungen//DE', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'X-WR-CALNAME:Zyklus'];
   for (const ev of events) {
-    lines.push('BEGIN:VEVENT', `UID:${ev.uid}`, `DTSTAMP:${dtstamp}`, `SUMMARY:${icsText(ev.summary)}`);
+    lines.push('BEGIN:VEVENT', `UID:${ev.uid}`, `SEQUENCE:${sequence}`, `DTSTAMP:${dtstamp}`, `SUMMARY:${icsText(ev.summary)}`);
     if (ev.description) lines.push(`DESCRIPTION:${icsText(ev.description)}`);
     if (ev.time === undefined || ev.time === null) {
       lines.push(`DTSTART;VALUE=DATE:${icsDate(ev.day)}`, `DTEND;VALUE=DATE:${icsDate(ev.endDay || ev.day + 1)}`, 'TRANSP:TRANSPARENT');
     } else {
-      lines.push(`DTSTART:${icsDateTime(ev.day, ev.time)}`, `DTEND:${icsDateTime(ev.day, Math.min(1439, ev.time + 5))}`, 'TRANSP:TRANSPARENT');
+      lines.push(`DTSTART:${icsDateTime(ev.day, ev.time)}`, 'DURATION:PT5M', 'TRANSP:TRANSPARENT'); // auch um 23:59 gültig
     }
     if (ev.daily) lines.push('RRULE:FREQ=DAILY');
     for (const trig of ev.alarms || []) {
@@ -59,13 +61,14 @@ export function triggerDaysBefore(days, min) {
 }
 
 // Welche Termine gehören in die Datei? a = analyze()-Ergebnis, r = Einstellungen, today = Tageszahl.
-export function reminderEvents(a, r, today) {
+// onlyPrediction: nur die Vorhersage-Termine (für „Neue Vorhersage“), ohne die täglichen
+export function reminderEvents(a, r, today, onlyPrediction = false) {
   const events = [];
   const notes = [];
   if (r.period) {
     if (a.hasData && a.nextStart > today) {
       events.push({
-        uid: `periode-${icsDate(a.nextStart)}@zyklus`,
+        uid: 'periode-naechste@zyklus',
         summary: '🩸 Periode erwartet',
         description: 'Vorhersage der Zyklus-App. Ist die Periode da, in der App eintragen.',
         day: a.nextStart,
@@ -76,7 +79,7 @@ export function reminderEvents(a, r, today) {
   if (r.fertile && a.hasData && a.nextWindow && a.nextWindow.end >= today) {
     const w = a.nextWindow;
     events.push({
-      uid: `fruchtbar-${icsDate(w.start)}@zyklus`,
+      uid: 'fruchtbar-naechste@zyklus',
       summary: '🌱 Fruchtbare Tage (geschätzt)',
       description: 'Kalender-Schätzung der Zyklus-App – kein Verhütungsmittel.',
       day: Math.max(w.start, today),
@@ -84,10 +87,10 @@ export function reminderEvents(a, r, today) {
       alarms: w.start > today ? [triggerDaysBefore(0, 9 * 60)] : [],
     });
   }
-  if (r.pill) {
+  if (r.pill && !onlyPrediction) {
     events.push({ uid: 'pille-taeglich@zyklus', summary: '💊 Pille nehmen', day: today, time: r.pillTime, daily: true, alarms: ['PT0M'] });
   }
-  if (r.track) {
+  if (r.track && !onlyPrediction) {
     events.push({ uid: 'tracken-taeglich@zyklus', summary: '📝 Zyklus: Tag tracken', day: today, time: r.trackTime, daily: true, alarms: ['PT0M'] });
   }
   return { events, notes };

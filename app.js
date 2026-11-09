@@ -131,7 +131,7 @@ function normalize(o) {
   if (o.meta && typeof o.meta.created === 'string') d.meta.created = o.meta.created;
   if (o.meta && typeof o.meta.lastBackup === 'string' && Number.isFinite(Date.parse(o.meta.lastBackup))) d.meta.lastBackup = o.meta.lastBackup;
   if (o.meta && typeof o.meta.seenVersion === 'string') d.meta.seenVersion = o.meta.seenVersion;
-  if (o.meta && o.meta.icsExport && typeof o.meta.icsExport.at === 'string') {
+  if (o.meta && o.meta.icsExport && typeof o.meta.icsExport.at === 'string' && Number.isFinite(Date.parse(o.meta.icsExport.at))) {
     d.meta.icsExport = { at: o.meta.icsExport.at, period: C.isValidIso(o.meta.icsExport.period) ? o.meta.icsExport.period : null };
   }
   // Schlaf-Timer und abgehakte Tablette: bis 7 Tage übernehmen, settleSleep() räumt dann sauber auf
@@ -205,7 +205,7 @@ function refresh() {
 function checkNewDay() {
   if (C.todayNum() !== today) refresh();
 }
-function commit() { save(); refresh(); }
+function commit() { const ok = save(); refresh(); return ok; }
 
 // ---------------------------------------------------------------------------
 // Ansichten
@@ -229,14 +229,14 @@ function switchTab(tab) {
 const wheel = { dragging: false, lastAng: 0, startAng: 0, acc: 0, moved: 0, el: null, cyc: null };
 const wheelSel = () => (ui.wheelDay === null ? today : ui.wheelDay);
 function wheelBounds() {
-  const futureStart = A.overdue > 0 ? today + 1 : A.base;
-  return { min: A.periods[0].start, max: futureStart + C.AHEAD * A.cycleLen - 1 };
+  return { min: A.periods[0].start, max: A.futureStart + C.AHEAD * A.cycleLen - 1 };
 }
 const PHASE_HELP = {
   follikel: 'Zeit nach der Periode – der Körper bereitet den nächsten Eisprung vor.',
   fruchtbar: 'Rund um den Eisprung. Nur eine Kalender-Schätzung, kein Verhütungsmittel.',
   'eisprung-tag': 'Geschätzter Eisprung. Nur eine Kalender-Schätzung, kein Verhütungsmittel.',
   luteal: 'Nach dem Eisprung bis zur nächsten Periode. In den Tagen davor können PMS-Beschwerden auftreten.',
+  unklar: 'In diesem Zyklus fehlt vermutlich ein Periodeneintrag – deshalb keine Phasen-Schätzung.',
 };
 
 function wheelSvg(cyc, sel) {
@@ -295,6 +295,7 @@ function wheelInfo(cyc, info, sel, b) {
   else if (phase === 'eisprung-tag') head = 'Eisprung (geschätzt)';
   else if (phase === 'fruchtbar') head = 'Fruchtbare Tage (geschätzt)';
   else if (phase === 'luteal') head = 'Lutealphase';
+  else if (phase === 'unklar') head = `Zyklustag ${info.day}`;
   else head = 'Follikelphase';
   const date = fLong(sel);
   let sub = `${date.charAt(0).toUpperCase()}${date.slice(1)}${sel > today ? ' · Vorhersage' : ''}`;
@@ -326,6 +327,9 @@ function renderWheel() {
       <span class="rc-small">${sel === today ? '' : 'Zyklustag · '}von ${cyc.kind === 'past' ? '' : 'ca. '}${cyc.len}</span>
     </div>`;
   host.setAttribute('aria-valuetext', `${fLong(sel)}, Zyklustag ${info.day}`);
+  host.setAttribute('aria-valuenow', String(sel - today));
+  host.setAttribute('aria-valuemin', String(b.min - today));
+  host.setAttribute('aria-valuemax', String(b.max - today));
   host.classList.toggle('moved', sel !== today);
   $('#wheel-info').innerHTML = wheelInfo(cyc, info, sel, b);
 }
@@ -495,7 +499,7 @@ function renderHome() {
   lastSleepMode = sleepMode();
   out.push(sleepCard());
   if (icsOutdated()) {
-    out.push(`<div class="card remind-card"><div><b>🔔 Neue Vorhersage</b><p>Die Kalender-Erinnerung für die nächste Periode (${esc(fShort(A.nextStart))}) ist noch nicht in deinem Kalender.</p></div><button class="btn small primary" data-act="ics-export">Übernehmen</button></div>`);
+    out.push(`<div class="card remind-card"><div><b>🔔 Neue Vorhersage</b><p>Die Kalender-Erinnerung für die nächste Periode (${esc(fShort(A.nextStart))}) ist noch nicht in deinem Kalender.</p></div><button class="btn small primary" data-act="ics-export-next">Übernehmen</button></div>`);
   }
 
   if (e) {
@@ -550,7 +554,7 @@ const fMonthShort = fmt({ month: 'long' });
 function yearSummary(y) {
   const inYear = n => D(n).getUTCFullYear() === y;
   const periods = A.periods.filter(p => inYear(p.start)).length;
-  const cyc = A.cycles.filter(c => inYear(c.start) && c.used);
+  const cyc = A.cycles.filter(c => inYear(c.start) && !c.note);
   const avg = cyc.length ? Math.round(cyc.reduce((s, c) => s + c.length, 0) / cyc.length) : null;
   const pdays = Object.keys(state.days).filter(iso => iso.startsWith(`${y}-`) && C.isPeriodDay(state.days[iso])).length;
   const parts = [plural(periods, 'Periode', 'Perioden')];
@@ -661,7 +665,7 @@ function collectPatterns() {
   for (const [iso, e] of Object.entries(state.days)) {
     const n = C.toNum(iso);
     if (n > today) continue;
-    const ph = C.cyclePhase(n, A.periods, A.cycleLen);
+    const ph = C.cyclePhase(n, A.periods, A.cycleLen, A.cycles);
     for (const [cat, ids] of Object.entries(e.tags)) for (const id of ids) add(cat, id, ph);
     for (const t of e.custom) add('custom', t, ph);
   }
@@ -955,6 +959,8 @@ function openTracker(n) {
   document.body.classList.add('tr-open');
   renderTracker();
   $('#tr-scroll').scrollTop = 0;
+  const title = $('#tr-title');
+  if (title) { title.setAttribute('tabindex', '-1'); title.focus({ preventScroll: true }); }
 }
 function loadDay(n) {
   tr.n = n;
@@ -962,6 +968,7 @@ function loadDay(n) {
   tr.dirty = false;
 }
 function hideTracker() {
+  if (pendingReload && !reloading) { reloading = true; setTimeout(() => location.reload(), 300); }
   $('#tracker').hidden = true;
   document.body.classList.remove('tr-open');
   tr.n = null;
@@ -1263,8 +1270,9 @@ async function importBackup(file) {
     const count = Object.keys(data.days).length;
     if (!confirm(`Backup mit ${plural(count, 'eingetragenem Tag', 'eingetragenen Tagen')} laden? Die aktuellen Einträge auf diesem Gerät werden dabei ersetzt.`)) return;
     state = data;
-    save();
-    refresh();
+    if (!commit()) return;
+    dropUndo();
+    render();
     toast('Backup geladen');
   } catch {
     toast('Diese Datei ist kein gültiges Zyklus-Backup');
@@ -1286,7 +1294,7 @@ function remindCard() {
     ${r.track ? `<label class="row compact"><span class="row-title">um</span><input id="remind-track-time" class="time-input" type="time" value="${S.fmtTime(r.trackTime)}"></label>` : ''}
     <div class="btn-row"><button class="btn primary" data-act="ics-export">📅 In den Kalender übernehmen</button></div>
     ${ex ? `<p class="row-sub">Zuletzt übernommen am ${esc(fDMY(C.todayNum(new Date(ex.at))))}${ex.period ? ` · Periode ${esc(fDMY(C.toNum(ex.period)))}` : ''}</p>` : ''}
-    <p class="row-sub">Tägliche Erinnerungen musst du nur einmal übernehmen. Die Perioden-Erinnerung nach jeder neuen Periode erneut – die App sagt dir auf „Heute“ Bescheid.</p>
+    <p class="row-sub">Tägliche Erinnerungen musst du nur einmal übernehmen. Die Perioden-Erinnerung nach jeder neuen Periode erneut – die App sagt dir auf „Heute“ Bescheid, der Kalender ersetzt dann den alten Termin. Eine Erinnerung abschalten: den Termin im Kalender löschen.</p>
   </div>`;
 }
 // Gibt es eine neue Vorhersage, die noch nicht im Kalender ist? (nur, wenn schon einmal übernommen)
@@ -1295,9 +1303,9 @@ function icsOutdated() {
   if (!ex || !state.settings.remind.period || !A.hasData || !(A.nextStart > today)) return false;
   return ex.period !== C.toIso(A.nextStart);
 }
-function exportIcs() {
+function exportIcs(onlyPrediction = false) {
   const r = state.settings.remind;
-  const { events, notes } = reminderEvents(A, r, today);
+  const { events, notes } = reminderEvents(A, r, today, onlyPrediction);
   if (!events.length) { toast(notes[0] || 'Bitte zuerst eine Erinnerung einschalten'); return; }
   const ics = buildIcs(events);
   const a = document.createElement('a');
@@ -1325,10 +1333,15 @@ function exportIcs() {
 
 // --- Import aus Clue ---------------------------------------------------------------------
 const UNDO_KEY = `${KEY}-vor-import`;
+const UNDO_DAYS = 14; // so lange lässt sich ein Import rückgängig machen, danach wird die Kopie gelöscht
+function dropUndo() { try { localStorage.removeItem(UNDO_KEY); } catch { /* egal */ } }
 function undoInfo() {
   try {
     const s = JSON.parse(localStorage.getItem(UNDO_KEY));
-    return s && s.at ? fDMY(C.todayNum(new Date(s.at))) : '';
+    const t = s && Date.parse(s.at);
+    if (!Number.isFinite(t)) return '';
+    if (Date.now() - t > UNDO_DAYS * 86400e3) { dropUndo(); return ''; }
+    return fDMY(C.todayNum(new Date(t)));
   } catch { return ''; }
 }
 async function importClue(file) {
@@ -1361,10 +1374,15 @@ async function importClue(file) {
     } catch {
       if (!confirm('Die Sicherheitskopie für „Rückgängig“ ließ sich nicht speichern. Trotzdem importieren?')) return;
     }
-    state.days = res.days;
+    const merged = {};
+    for (const [iso, e] of Object.entries(res.days)) {
+      const c = cleanEntry(e);
+      if (c) merged[iso] = c;
+    }
+    state.days = merged;
     const tags = state.settings.customTags;
     for (const [t] of unknown) if (tags.length < TAG_MAX && !tags.some(x => x.toLowerCase() === t.toLowerCase())) tags.push(t);
-    commit();
+    if (!commit()) return; // Fehlermeldung kam schon
     toast(`Clue-Daten importiert: ${res.stats.neu} neue Tage`);
   } catch (err) {
     toast(err && err.message ? err.message : 'Import fehlgeschlagen');
@@ -1375,10 +1393,12 @@ function undoImport() {
   try { saved = JSON.parse(localStorage.getItem(UNDO_KEY)); } catch { /* egal */ }
   if (!saved || !saved.data) return toast('Keine Sicherheitskopie gefunden');
   if (!confirm(`Import vom ${fDMY(C.todayNum(new Date(saved.at)))} rückgängig machen? Was du seit dem Import eingetragen hast, geht dabei verloren.`)) return;
+  const meta = state.meta; // laufender Schlaf-Timer, Backup-Datum usw. bleiben
   state = normalize(saved.data);
-  save();
-  try { localStorage.removeItem(UNDO_KEY); } catch { /* egal */ }
-  refresh();
+  state.meta = meta;
+  if (!commit()) return;
+  dropUndo();
+  render();
   toast('Import rückgängig gemacht');
 }
 
@@ -1387,6 +1407,11 @@ function wipe() {
   if (!confirm('Letzte Rückfrage: Das lässt sich ohne Backup nicht rückgängig machen. Löschen?')) return;
   state = freshData();
   ui.mark = false;
+  try {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith(KEY) && k !== KEY) keys.push(k); }
+    for (const k of keys) localStorage.removeItem(k);
+  } catch { /* egal */ }
   commit();
   toast('Alle Daten gelöscht');
 }
@@ -1581,7 +1606,8 @@ const ACTIONS = {
   'import'() { $('#import-file').click(); },
   'wipe'() { wipe(); },
   'clue-import'() { $('#clue-file').click(); },
-  'ics-export'() { exportIcs(); },
+  'ics-export'() { exportIcs(false); },
+  'ics-export-next'() { exportIcs(true); },
   'undo-import'() { undoImport(); },
 };
 
@@ -1773,6 +1799,8 @@ onSwipe($('#tr-week'), dir => trGoto(tr.n + 7 * dir));
 // App geht in den Hintergrund (iOS kann sie dann jederzeit beenden): offene Änderungen sichern,
 // auch wenn gerade die Rückfrage offen ist. Beim Zurückkommen: neuer Tag? Update da?
 let swReg = null;
+let pendingReload = false; // Update kam während des Trackens
+let reloading = false;
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
     if (tr.n !== null && tr.dirty && commitDraft()) {
@@ -1781,6 +1809,7 @@ document.addEventListener('visibilitychange', () => {
     }
   } else {
     checkNewDay();
+    if (pendingReload && tr.n === null && !reloading) { reloading = true; location.reload(); return; }
     if (settleSleep() && tr.n === null) render();
     if (swReg) swReg.update().catch(() => {});
   }
@@ -1836,16 +1865,19 @@ settleSleep();
 if (needsSave && storageOk) save();
 render();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  const hadController = !!navigator.serviceWorker.controller;
-  let reloading = false;
-  // Neue Version aktiv: neu laden, damit sie sofort zu sehen ist – nicht bei der ersten Installation
-  // und nie mitten im Tracken (dann beim nächsten Öffnen)
-  const applyUpdate = () => {
-    if (!hadController || reloading) return;
-    if (tr.n !== null) { toast('Update geladen – wird beim nächsten Öffnen aktiv'); return; }
+  // Welcher Service Worker hat diese Seite ausgeliefert? Neu laden nur, wenn danach ein ANDERER aktiv wird
+  // (nicht bei der Erstinstallation) – und nie mitten im Tracken: dann beim Schließen des Trackers.
+  let current = navigator.serviceWorker.controller;
+  const onActivated = w => {
+    if (!w || w === current) return;
+    if (!current) { current = w; return; } // Erstinstallation: nichts neu laden
+    current = w;
+    if (reloading) return;
+    if (tr.n !== null) { pendingReload = true; toast('Update geladen – wird nach dem Tracken aktiv'); return; }
     reloading = true;
     location.reload();
   };
+  const applyUpdate = () => onActivated(navigator.serviceWorker.controller);
   navigator.serviceWorker.addEventListener('controllerchange', applyUpdate);
   navigator.serviceWorker.register('./sw.js')
     .then(reg => {
@@ -1853,7 +1885,7 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
       // zusätzlich über den Zustand des neuen Service Workers – iOS meldet controllerchange nicht immer zuverlässig
       reg.addEventListener('updatefound', () => {
         const nw = reg.installing;
-        if (nw) nw.addEventListener('statechange', () => { if (nw.state === 'activated') applyUpdate(); });
+        if (nw) nw.addEventListener('statechange', () => { if (nw.state === 'activated') onActivated(nw); });
       });
       return reg.update();
     })

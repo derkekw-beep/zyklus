@@ -1,7 +1,7 @@
 // Importierte Tage mit vorhandenen zusammenführen – ohne DOM, damit es in Node getestet werden kann.
 // Grundsatz: Was schon in der App steht, gewinnt immer. Import füllt nur Lücken und ergänzt.
 // Einträge haben die Form { tags, custom, sleep, bed, wake, pill, weight, note } (wie in app.js nach cleanEntry).
-import { CAT, choose } from './tracking.js';
+import { CAT, choose, NOTE_MAX } from './tracking.js';
 
 const copy = o => JSON.parse(JSON.stringify(o));
 const sameJSON = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -48,7 +48,9 @@ export function mergeEntry(own, inc, source = 'Import') {
   }
   const n = (inc.note || '').trim();
   if (n && !e.note.includes(n)) {
-    e.note = e.note.trim() ? `${e.note.trim()}\n\n[${source}] ${n}` : n;
+    const joined = e.note.trim() ? `${e.note.trim()}\n\n[${source}] ${n}` : n;
+    // nie über die Höchstlänge: die eigene Notiz bleibt immer ganz, der Import-Teil wird ggf. gekürzt
+    e.note = joined.length <= NOTE_MAX ? joined : `${joined.slice(0, NOTE_MAX - 1)}…`;
     changed = true;
   }
   return { entry: e, changed, conflicts };

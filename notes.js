@@ -3,6 +3,17 @@
 
 export const NOTES = [
   {
+    v: '1.9',
+    date: '09.11.2026',
+    items: [
+      'Rad und Kalender zählen die Zyklustage rund um die erwartete Periode jetzt gleich',
+      'Zyklen mit vermutlich vergessener Periode bekommen keine geschätzten Phasen mehr',
+      'Kalender-Erinnerungen ersetzen sich beim erneuten Übernehmen, statt doppelt zu erscheinen',
+      'Updates kommen zuverlässiger an – und falls die App mal nicht startet, hilft „App neu laden“ (deine Daten bleiben)',
+      '„Alle Daten löschen“ entfernt jetzt wirklich alles, auch die Kopie vom Import',
+    ],
+  },
+  {
     v: '1.8',
     date: '09.11.2026',
     items: [
@@ -98,7 +109,7 @@ export const NOTES = [
 export const APP_VERSION = NOTES[0].v;
 
 export const FEATURES = [
-  ['🔮', 'Vorhersage', 'Nächste Periode aus dem Schnitt deiner letzten 6 Zyklen, mit typischer Schwankung. Zwischenblutungen und vergessene Perioden werden erkannt und nicht mitgezählt.'],
+  ['🔮', 'Vorhersage', 'Nächste Periode aus dem Schnitt deiner letzten 8 Zyklen (ohne den kürzesten und längsten), mit typischer Spanne. Zwischenblutungen und vergessene Perioden werden erkannt und nicht mitgezählt.'],
   ['🌱', 'Fruchtbare Tage', 'Eisprung ≈ 14 Tage vor der nächsten Periode, fruchtbar 5 Tage davor bis 1 Tag danach. Nur eine Kalender-Schätzung, kein Verhütungsmittel.'],
   ['📝', 'Tracking', 'Periode, Schmierblutung, Gefühle, Schmerzen, PMS, Schlaf, Schlaftabletten, Sexleben, Energie, Geist, Verdauung, Ausfluss, Haut, Haare, Gewicht, Notiz und eigene Tags. Mit Suche und Wochenleiste.'],
   ['😴', 'Schlaf', 'Schlafen gehen / Aufgewacht per Tipp, Schlafziel, Schlafdefizit der Woche, Schlafrhythmus und Schlaf je Zyklusphase.'],

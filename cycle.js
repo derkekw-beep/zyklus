@@ -103,13 +103,15 @@ export function findPeriods(days, today = Infinity, defaultCycle = 28) {
 }
 
 // Lage eines Tages im Zyklus als Anteil 0..1 (0 = Periodenbeginn). null, wenn unbekannt.
-export function cyclePhase(n, periods, avgLen) {
+// cycles (optional): Zyklen aus analyze() – Zyklen mit vermutlich fehlendem Eintrag liefern null
+export function cyclePhase(n, periods, avgLen, cycles = null) {
   let i = -1;
   for (let k = 0; k < periods.length; k++) {
     if (periods[k].start <= n) i = k;
     else break;
   }
   if (i < 0) return null;
+  if (cycles && cycles[i] && cycles[i].note) return null;
   const len = i + 1 < periods.length ? periods[i + 1].start - periods[i].start : avgLen;
   const d = n - periods[i].start;
   if (d >= len || len > MAX_CYCLE) return null;
@@ -152,23 +154,24 @@ export function cycleAt(n, a, today) {
     if (n >= ps[i].start && n < ps[i + 1].start) {
       const next = ps[i + 1].start;
       const flagged = a.cycles[i] && a.cycles[i].note;
-      return { start: ps[i].start, len: next - ps[i].start, pStart: ps[i].start, pEnd: ps[i].end, predFrom: Infinity, win: flagged ? null : winFor(next, ps[i].end), kind: 'past' };
+      return { start: ps[i].start, len: next - ps[i].start, pStart: ps[i].start, pEnd: ps[i].end, predFrom: Infinity, win: flagged ? null : winFor(next, ps[i].end), kind: 'past', flagged: !!flagged };
     }
   }
   const last = a.last;
-  const futureStart = a.overdue > 0 ? today + 1 : a.base; // bei Verspätung gehört heute noch zum laufenden Zyklus
+  const futureStart = a.futureStart; // gleiche Grenze wie Kalender und fruchtbare Tage (heute gehört zum laufenden Zyklus)
   if (n < futureStart) {
     return {
       start: last.start, len: futureStart - last.start, pStart: last.start,
       pEnd: a.ongoing ? a.expectedEnd : last.end, predFrom: a.ongoing ? Math.max(last.end + 1, today + 1) : Infinity,
-      win: winFor(a.nextStart, last.end), kind: 'current',
+      win: a.curWindow, kind: 'current',
     };
   }
   const k = Math.floor((n - futureStart) / a.cycleLen);
   if (k >= AHEAD) return null;
   const start = futureStart + k * a.cycleLen;
   const pEnd = start + a.periodLen - 1;
-  return { start, len: a.cycleLen, pStart: start, pEnd, predFrom: start, win: winFor(start + a.cycleLen, pEnd), kind: 'future' };
+  const ov = Math.max(start + a.cycleLen - a.luteal, start + a.periodLen); // wie in analyze()
+  return { start, len: a.cycleLen, pStart: start, pEnd, predFrom: start, win: { start: ov - 5, end: ov + 1, ov }, kind: 'future' };
 }
 
 // Zyklustag und Phase eines Tages innerhalb seines Zyklus (siehe cycleAt)
@@ -176,6 +179,7 @@ export function dayInfoAt(n, cyc) {
   const day = n - cyc.start + 1;
   let phase;
   if (n >= cyc.pStart && n <= cyc.pEnd) phase = 'periode';
+  else if (cyc.flagged) phase = 'unklar'; // vermutlich fehlt ein Periodeneintrag – keine Phasen-Aussage
   else if (cyc.win && n === cyc.win.ov) phase = 'eisprung-tag';
   else if (cyc.win && n >= cyc.win.start && n <= cyc.win.end) phase = 'fruchtbar';
   else if (cyc.win && n > cyc.win.end) phase = 'luteal';
@@ -233,7 +237,7 @@ export function analyze(data, today) {
     : plausible.length === 2 ? Math.min(...plausible)
       : plausible.length === 1 ? defaultCycle : null;
   for (const c of cycles) {
-    if (c.length < MIN_CYCLE) c.note = 'sehr kurz – Zwischenblutung?';
+    if (c.length < MIN_CYCLE) c.note = 'sehr kurz – Zwischenblutung?'; // kommt durch findPeriods eigentlich nicht vor, nur zur Sicherheit
     else if (c.length > MAX_CYCLE) c.note = 'sehr lang – fehlt ein Eintrag?';
     else if (ref !== null && c.length > ref * 1.6) c.note = 'fehlt vermutlich ein Eintrag';
   }
@@ -274,14 +278,18 @@ export function analyze(data, today) {
 
   const nextStart = last.start + cycleLen;
   const overdue = today > nextStart ? today - nextStart : 0;
-  const base = Math.max(nextStart, today); // überfällig: ab heute jederzeit möglich
+  // Heute gehört zum laufenden Zyklus, solange keine neue Periode eingetragen ist. Die vorhergesagten
+  // Zyklen beginnen deshalb frühestens morgen – gleich für Kalender, Zyklus-Rad und fruchtbare Tage.
+  const due = nextStart <= today; // heute erwartet oder schon überfällig
+  const futureStart = due ? today + 1 : nextStart;
 
   // Rest einer gerade laufenden Periode
   if (ongoing) {
     for (let d = Math.max(last.end + 1, today); d <= last.start + periodLen - 1; d++) res.predicted.add(d);
   }
+  if (due && !ongoing) res.predicted.add(today); // „kann heute kommen“
   for (let k = 0; k < AHEAD; k++) {
-    const s = base + k * cycleLen;
+    const s = futureStart + k * cycleLen;
     for (let d = s; d < s + periodLen; d++) res.predicted.add(d);
   }
 
@@ -292,7 +300,7 @@ export function analyze(data, today) {
     return { start: ov - 5, end: ov + 1, ov };
   };
   const windows = [windowFor(last.start)];
-  for (let k = 0; k < AHEAD; k++) windows.push(windowFor(base + k * cycleLen));
+  for (let k = 0; k < AHEAD; k++) windows.push(windowFor(futureStart + k * cycleLen));
   for (const w of windows) {
     for (let d = w.start; d <= w.end; d++) res.fertile.add(d);
     res.ovulation.add(w.ov);
@@ -300,13 +308,15 @@ export function analyze(data, today) {
 
   Object.assign(res, {
     nextStart,
-    base,
+    futureStart,
+    base: due ? today : nextStart, // erwarteter Termin für Texte („heute“ bei Fälligkeit)
+    due,
     overdue,
     ongoing,
     inPeriod: today >= last.start && today <= last.end,
     expectedEnd: Math.max(last.end, last.start + periodLen - 1),
     cycleDay: today - last.start + 1,
-    daysUntil: base - today,
+    daysUntil: due ? 0 : nextStart - today,
     curWindow: windows[0],
     nextWindow: windows.find(w => w.end >= today) || null,
   });
