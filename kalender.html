@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Diese Seite lädt und sendet nichts: Die Termine kommen aus dem Teil nach dem # (wird nie an den Server geschickt). -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'none'; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex, nofollow">
+<title>Zyklus – Kalender</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fbf7f4; --card: #fff; --text: #2a1d22; --muted: #7a666c; --accent: #c8336a; --line: #ecdfdc; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #161114; --card: #221a1e; --text: #f5eaee; --muted: #b49ea7; --accent: #ff6b97; --line: #3a2d33; } }
+  body { margin: 0; padding: calc(env(safe-area-inset-top) + 24px) 20px 40px; background: var(--bg); color: var(--text); font: 17px/1.45 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  p { color: var(--muted); margin: 0 0 16px; }
+  ul { list-style: none; margin: 0 0 20px; padding: 0; background: var(--card); border-radius: 16px; box-shadow: 0 0 0 1px var(--line); }
+  li { padding: 12px 16px; border-top: 1px solid var(--line); }
+  li:first-child { border-top: 0; }
+  li small { display: block; color: var(--muted); }
+  a.btn { display: block; padding: 18px; border-radius: 16px; background: var(--accent); color: #fff; font-weight: 750; font-size: 19px; text-align: center; text-decoration: none; }
+  .hint { margin-top: 16px; font-size: 15px; }
+  [hidden] { display: none !important; }
+</style>
+<script type="module" src="kalender.js"></script>
+</head>
+<body>
+<h1>📅 Erinnerungen</h1>
+<div id="ok" hidden>
+  <p>Diese Termine kommen mit Erinnerung in deinen Kalender:</p>
+  <ul id="list"></ul>
+  <a class="btn" id="add" download="zyklus-erinnerungen.ics">📅 Zum Kalender hinzufügen</a>
+  <p class="hint">Im Kalender-Dialog „Alle hinzufügen“ tippen – am besten in einen eigenen Kalender „Zyklus“. Danach dieses Fenster mit „Fertig“ schließen.</p>
+</div>
+<div id="empty" hidden>
+  <p>Keine Termine gefunden. Bitte in der Zyklus-App unter „Mehr“ → „Erinnerungen“ erneut auf „In den Kalender übernehmen“ tippen.</p>
+</div>
+</body>
+</html>

@@ -3,7 +3,7 @@
 // ohne Internet (oder wenn der Server länger als 4 Sekunden braucht) die Version aus dem Cache.
 // So kommt jedes Update beim nächsten Öffnen an, und offline läuft die App trotzdem.
 // Bei jeder Änderung an der App die Versionsnummer erhöhen (macht tools/deploy.mjs).
-const VERSION = 'zyklus-v12';
+const VERSION = 'zyklus-v13';
 const FILES = [
   './',
   './index.html',
@@ -15,6 +15,8 @@ const FILES = [
   './notes.js',
   './importer.js',
   './ics.js',
+  './kalender.html',
+  './kalender.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',

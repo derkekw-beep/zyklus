@@ -1299,17 +1299,24 @@ function exportIcs() {
   const r = state.settings.remind;
   const { events, notes } = reminderEvents(A, r, today);
   if (!events.length) { toast(notes[0] || 'Bitte zuerst eine Erinnerung einschalten'); return; }
-  const file = new File([buildIcs(events)], 'zyklus-erinnerungen.ics', { type: 'text/calendar' });
-  // iOS öffnet .ics direkt im Kalender („Alle hinzufügen“)
-  const url = URL.createObjectURL(file);
+  const ics = buildIcs(events);
   const a = document.createElement('a');
-  a.href = url;
-  a.target = '_blank'; // eigenes Fenster, damit die App selbst nicht weg-navigiert
   a.rel = 'noopener';
+  if (standalone) {
+    // App vom Home-Bildschirm: iOS öffnet dort keine Kalenderdateien. Deshalb die Kalender-Seite im
+    // Safari-Fenster öffnen; die Termine stehen nur hinter dem # (geht nie an einen Server).
+    a.href = `kalender.html#${encodeURIComponent(ics)}`;
+    a.target = '_blank';
+  } else {
+    // Normales Safari: Download-Link öffnet direkt den Kalender-Dialog
+    const url = URL.createObjectURL(new File([ics], 'zyklus-erinnerungen.ics', { type: 'text/calendar' }));
+    a.href = url;
+    a.download = 'zyklus-erinnerungen.ics';
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
   document.body.appendChild(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
   state.meta.icsExport = { at: new Date().toISOString(), period: r.period && A.hasData && A.nextStart > today ? C.toIso(A.nextStart) : null };
   save();
   if (notes.length) setTimeout(() => toast(notes[0]), 400);
