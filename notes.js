@@ -3,6 +3,15 @@
 
 export const NOTES = [
   {
+    v: '1.5',
+    date: '09.11.2026',
+    items: [
+      'Jahresübersicht im Kalender: auf den Monatsnamen tippen – alle 12 Monate eines Jahres auf einen Blick',
+      'Jahr mit ‹ › oder Wischen wechseln, Monat antippen öffnet ihn direkt',
+      'Je Jahr eine kurze Zusammenfassung: Perioden, Ø Zykluslänge, Periodentage',
+    ],
+  },
+  {
     v: '1.4',
     date: '09.11.2026',
     items: [

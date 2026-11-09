@@ -494,3 +494,24 @@ details.fold[open] > summary { margin-bottom: 10px; }
 .wheel-entry { margin-top: 10px; text-align: left; }
 .wheel-entry .mini-chips { justify-content: center; }
 .wheel-open { display: block; margin: 10px auto 0; }
+
+/* --- Version 1.5: Jahresansicht ------------------------------------------------------ */
+.cal-title { border: 0; background: none; padding: 4px 8px; border-radius: 10px; }
+.cal-title h2 { display: inline-flex; align-items: center; gap: 6px; }
+.cal-title .caret { font-size: 13px; color: var(--muted); }
+.cal-title:active { background: var(--card-2); }
+.year-sum { text-align: center; margin: -4px 0 12px; color: var(--muted); font-size: 14px; font-weight: 600; }
+.year-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.mini-month { border: 0; background: var(--card-2); border-radius: 12px; padding: 8px 6px 6px; text-align: left; min-width: 0; display: flex; flex-direction: column; justify-content: flex-start; }
+.mini-month.current { box-shadow: inset 0 0 0 2px var(--accent); }
+.mini-month:active { transform: scale(.97); }
+.mm-name { display: block; font-size: 13px; font-weight: 700; margin: 0 0 5px 2px; }
+.mm-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.md { display: block; aspect-ratio: 1; border-radius: 50%; background: var(--line); }
+.md.blank { visibility: hidden; }
+.md.future { opacity: .55; }
+.md.fertile { background: var(--fertile-soft); box-shadow: inset 0 0 0 1px var(--fertile); }
+.md.ov { background: var(--fertile); }
+.md.pred { background: transparent; box-shadow: inset 0 0 0 1.5px var(--period); }
+.md.period { background: var(--period); box-shadow: none; }
+.md.today { box-shadow: 0 0 0 1.5px var(--text); }

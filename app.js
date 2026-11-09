@@ -180,7 +180,7 @@ function putEntry(n, e) {
 let state = load();
 let today = C.todayNum();
 let A = C.analyze(state, today);
-const ui = { tab: 'home', y: D(today).getUTCFullYear(), m: D(today).getUTCMonth(), mark: false, statsTab: 'cycle', folds: new Set(), wheelDay: null };
+const ui = { tab: 'home', y: D(today).getUTCFullYear(), m: D(today).getUTCMonth(), mark: false, statsTab: 'cycle', folds: new Set(), wheelDay: null, calView: 'month' };
 
 function refresh() {
   today = C.todayNum();
@@ -532,7 +532,64 @@ function dayLabel(n, cls, e) {
   return parts.join(', ');
 }
 
+// --- Jahresansicht: 12 Mini-Monate, Jahr wählen, Monat antippen ------------------------------
+const fMonthShort = fmt({ month: 'long' });
+function yearSummary(y) {
+  const inYear = n => D(n).getUTCFullYear() === y;
+  const periods = A.periods.filter(p => inYear(p.start)).length;
+  const cyc = A.cycles.filter(c => inYear(c.start) && c.used);
+  const avg = cyc.length ? Math.round(cyc.reduce((s, c) => s + c.length, 0) / cyc.length) : null;
+  const pdays = Object.keys(state.days).filter(iso => iso.startsWith(`${y}-`) && C.isPeriodDay(state.days[iso])).length;
+  const parts = [plural(periods, 'Periode', 'Perioden')];
+  if (avg) parts.push(`Ø Zyklus ${avg} Tage`);
+  parts.push(plural(pdays, 'Periodentag', 'Periodentage'));
+  return parts.join(' · ');
+}
+function renderYear() {
+  const y = ui.y;
+  const showF = state.settings.showFertile;
+  const curY = D(today).getUTCFullYear(), curM = D(today).getUTCMonth();
+  let months = '';
+  for (let m = 0; m < 12; m++) {
+    const first = Math.round(Date.UTC(y, m, 1) / C.DAY);
+    const dim = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    let dots = '';
+    for (let i = 0; i < weekdayIdx(first); i++) dots += '<i class="md blank"></i>';
+    let pCount = 0;
+    for (let d = 0; d < dim; d++) {
+      const n = first + d;
+      const cls = dayClasses(n, state.days[C.toIso(n)], showF);
+      if (cls.includes('period')) pCount++;
+      dots += `<i class="md ${cls.join(' ')}"></i>`;
+    }
+    const isCur = y === curY && m === curM;
+    months += `<button class="mini-month${isCur ? ' current' : ''}" data-act="cal-open-month" data-m="${m}" aria-label="${esc(fMonth(first))}${pCount ? `, ${plural(pCount, 'Periodentag', 'Periodentage')}` : ''}">
+      <span class="mm-name">${esc(fMonthShort(first))}</span><span class="mm-grid" aria-hidden="true">${dots}</span></button>`;
+  }
+  $('#view-cal').innerHTML = `
+    <div class="card cal-card">
+      <div class="cal-head">
+        <button class="icon-btn" data-act="cal-prev" aria-label="Vorheriges Jahr">‹</button>
+        <h2>${y}</h2>
+        <button class="icon-btn" data-act="cal-next" aria-label="Nächstes Jahr">›</button>
+      </div>
+      <p class="year-sum">${esc(yearSummary(y))}</p>
+      <div class="year-grid">${months}</div>
+    </div>
+    <div class="cal-tools">
+      <button class="btn" data-act="cal-month-view">📅 Zur Monatsansicht</button>
+      ${y === curY ? '' : '<button class="btn" data-act="cal-today">Heute</button>'}
+    </div>
+    <p class="hint">Tippe auf einen Monat, um ihn zu öffnen. Wischen oder ‹ › wechselt das Jahr.</p>
+    <div class="legend">
+      <span><i class="lg period"></i>Periode</span>
+      <span><i class="lg pred"></i>Vorhersage</span>
+      ${showF ? '<span><i class="lg fertile"></i>Fruchtbar</span>' : ''}
+    </div>`;
+}
+
 function renderCal() {
+  if (ui.calView === 'year') return renderYear();
   const first = Math.round(Date.UTC(ui.y, ui.m, 1) / C.DAY);
   const dim = new Date(Date.UTC(ui.y, ui.m + 1, 0)).getUTCDate();
   const showF = state.settings.showFertile;
@@ -550,7 +607,7 @@ function renderCal() {
     <div class="card cal-card${ui.mark ? ' marking' : ''}">
       <div class="cal-head">
         <button class="icon-btn" data-act="cal-prev" aria-label="Vorheriger Monat">‹</button>
-        <h2>${esc(fMonth(first))}</h2>
+        <button class="cal-title" data-act="cal-year-view" aria-label="${esc(fMonth(first))} – Jahresübersicht öffnen"><h2>${esc(fMonth(first))} <span class="caret" aria-hidden="true">▾</span></h2></button>
         <button class="icon-btn" data-act="cal-next" aria-label="Nächster Monat">›</button>
       </div>
       <div class="cal-grid wd" aria-hidden="true">${WD2.map(w => `<span>${w}</span>`).join('')}</div>
@@ -572,6 +629,7 @@ function renderCal() {
     </div>`;
 }
 function shiftMonth(delta) {
+  if (ui.calView === 'year') { ui.y += delta; renderCal(); return; } // in der Jahresansicht: ganzes Jahr weiter
   const d = new Date(Date.UTC(ui.y, ui.m + delta, 1));
   ui.y = d.getUTCFullYear();
   ui.m = d.getUTCMonth();
@@ -1369,6 +1427,7 @@ function stopSleep() {
 const ACTIONS = {
   'start-mark'() {
     ui.mark = true;
+    ui.calView = 'month';
     ui.y = D(today).getUTCFullYear();
     ui.m = D(today).getUTCMonth();
     switchTab('cal');
@@ -1382,6 +1441,9 @@ const ACTIONS = {
   'cal-prev'() { shiftMonth(-1); },
   'cal-next'() { shiftMonth(1); },
   'cal-today'() { ui.y = D(today).getUTCFullYear(); ui.m = D(today).getUTCMonth(); renderCal(); },
+  'cal-year-view'() { ui.calView = 'year'; renderCal(); window.scrollTo(0, 0); },
+  'cal-month-view'() { ui.calView = 'month'; renderCal(); },
+  'cal-open-month'(el) { ui.m = Number(el.dataset.m); ui.calView = 'month'; renderCal(); window.scrollTo(0, 0); },
   'mark'() { ui.mark = !ui.mark; renderCal(); },
   'tr-close'() { leaveDay(hideTracker); },
   'tr-save'() {
