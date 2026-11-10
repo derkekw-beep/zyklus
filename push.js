@@ -123,6 +123,20 @@ export async function storePlan(items) {
   });
   db.close();
 }
+// Welche Mitteilung wurde gerade angetippt? Liefert die Art einmal und löscht den Vermerk (höchstens 2 Minuten alt).
+export async function takeOpened() {
+  const db = await idb();
+  const v = await new Promise((resolve, reject) => {
+    const tx = db.transaction('kv', 'readwrite');
+    const st = tx.objectStore('kv');
+    const q = st.get('open');
+    q.onsuccess = () => { if (q.result) st.delete('open'); };
+    tx.oncomplete = () => resolve(q.result || null);
+    tx.onerror = () => reject(tx.error);
+  });
+  db.close();
+  return v && typeof v.kind === 'string' && Date.now() - v.at < 120000 ? v.kind : null;
+}
 const b64ToBytes = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
 
 // Erlaubnis einholen (muss direkt aus einem Tipp heraus aufgerufen werden) und beim Push-Dienst des Geräts anmelden

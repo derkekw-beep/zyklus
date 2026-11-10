@@ -3,7 +3,7 @@
 // Eine neue Version wird beim Installieren vollständig geladen (sonst bleibt die alte aktiv),
 // danach lädt sich die App selbst neu. Offline läuft sie aus dem Cache.
 // Bei jeder Änderung an der App die Versionsnummer erhöhen (macht tools/deploy.mjs).
-const VERSION = 'zyklus-v21';
+const VERSION = 'zyklus-v22';
 const FILES = [
   './',
   './index.html',
@@ -118,10 +118,12 @@ self.addEventListener('notificationclick', event => {
   const kind = event.notification.data && event.notification.data.kind;
   event.notification.close();
   event.waitUntil((async () => {
+    // Angetippte Mitteilung merken: iOS öffnet die App oft nur, ohne ihr etwas mitzuteilen
+    try { const db = await kvOpen(); await kvPut(db, 'open', { kind, at: Date.now() }); db.close(); } catch { /* dann öffnet sich nur die App */ }
     const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const c of list) {
       if ('focus' in c) { await c.focus(); c.postMessage({ zyklus: kind }); return; }
     }
-    await self.clients.openWindow(kind === 'track' ? './?m=track' : './');
+    await self.clients.openWindow('./');
   })());
 });

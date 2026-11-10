@@ -5,7 +5,7 @@ import { NOTES, APP_VERSION, FEATURES } from './notes.js';
 import { parseClue, looksLikeClue, readImportFile, mergeDays } from './importer.js';
 import { buildIcs, reminderEvents } from './ics.js';
 import { expectations, heatmap, yearReview } from './insights.js';
-import { PUSH_DEFAULTS, PUSH_BOOLS, PUSH_TIMES, buildSchedule, scheduleTimes, pushSupported, pushConfigured, storePlan, subscribe, sendTimes, removeDevice } from './push.js';
+import { PUSH_DEFAULTS, PUSH_BOOLS, PUSH_TIMES, buildSchedule, scheduleTimes, pushSupported, pushConfigured, storePlan, subscribe, sendTimes, removeDevice, takeOpened } from './push.js';
 
 // ---------------------------------------------------------------------------
 // Grundlagen
@@ -541,7 +541,7 @@ function entrySummary(e) {
 function sleepMode() {
   if (state.meta.sleepStart) return 'running';
   const h = new Date().getHours();
-  if (h >= 19 || h < 4) return 'evening';
+  if (h >= 19 || h < 4 || ui.forceSleep) return 'evening'; // forceSleep: über die Mitteilung „Zeit fürs Bett“ geöffnet
   const e = state.days[C.toIso(today)];
   if (h < 13 && !(e && (e.sleep || e.bed !== null || e.wake !== null))) return 'morning';
   return 'none';
@@ -669,7 +669,7 @@ function renderHome() {
   </div>`);
 
   lastSleepMode = sleepMode();
-  if (state.settings.show.sleep || state.meta.sleepStart) out.push(sleepCard()); // ein laufender Timer bleibt immer sichtbar
+  if (state.settings.show.sleep || state.meta.sleepStart || ui.forceSleep) out.push(sleepCard()); // ein laufender Timer bleibt immer sichtbar
   if (icsOutdated()) {
     out.push(`<div class="card remind-card"><div><b>🔔 Neue Vorhersage</b><p>Die Kalender-Erinnerung für die nächste Periode (${esc(fShort(A.nextStart))}) ist noch nicht in deinem Kalender.</p></div><button class="btn small primary" data-act="ics-export-next">Übernehmen</button></div>`);
   }
@@ -1707,6 +1707,44 @@ async function turnPushOff() {
   toast('Mitteilungen sind aus');
   redrawSettings();
 }
+// Tipp auf eine Mitteilung: dorthin führen, worum es geht, und die Stelle kurz hervorheben
+function spotlight(sel) {
+  const el = $(sel);
+  if (!el) return;
+  el.scrollIntoView({ block: 'center', behavior: motionOk() ? 'smooth' : 'auto' });
+  el.classList.add('spot');
+  setTimeout(() => el.classList.remove('spot'), 2600);
+}
+function openFromNotice(kind) {
+  checkNewDay();
+  if (tr.n !== null) return; // mitten im Tracken nichts wegnehmen
+  if (kind === 'track') { openTracker(today); return; }
+  if (kind === 'late') {
+    // vergessene Periode nachtragen: Kalender im Markier-Modus
+    ui.mark = true;
+    ui.calView = 'month';
+    ui.y = D(today).getUTCFullYear();
+    ui.m = D(today).getUTCMonth();
+    switchTab('cal');
+    toast('Tippe die Tage deiner Periode an');
+    return;
+  }
+  const target = { bedtime: '#view-home .sleep-card', sleep: '#view-home .sleep-card', expect: '#view-home .expect-card', period: '#view-home [data-act="toggle-today"]', fertile: '#view-home .hero' }[kind];
+  if (!target) return;
+  if (kind === 'bedtime') ui.forceSleep = true; // Karte „Schlafen gehen?“ zeigen, egal wie spät es ist
+  ui.wheelDay = null;
+  switchTab('home');
+  spotlight(target);
+}
+let noticeBusy = false;
+async function checkNotice() {
+  if (noticeBusy) return;
+  noticeBusy = true;
+  try { const kind = await takeOpened(); if (kind) openFromNotice(kind); } catch { /* egal */ }
+  noticeBusy = false;
+}
+// der Vermerk kann einen Augenblick nach dem Öffnen der App eintreffen
+function watchNotice() { checkNotice(); setTimeout(checkNotice, 500); setTimeout(checkNotice, 1500); }
 const fPushWhen = fmt({ weekday: 'short', day: 'numeric', month: 'numeric' });
 function pushCard() {
   if (!pushConfigured()) return '';
@@ -2068,6 +2106,7 @@ const ACTIONS = {
   },
   'sleep-start'() {
     settleSleep();
+    ui.forceSleep = false;
     state.meta.sleepStart = Date.now();
     if (state.meta.sleepPill && !state.meta.sleepPillAt) state.meta.sleepPillAt = Date.now();
     save();
@@ -2342,6 +2381,7 @@ document.addEventListener('visibilitychange', () => {
     if (pendingReload && tr.n === null && !reloading) { reloading = true; location.reload(); return; }
     if (settleSleep() && tr.n === null) render();
     schedulePushSync();
+    watchNotice();
     if (swReg) swReg.update().catch(() => {});
   }
 });
@@ -2427,13 +2467,11 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
 // Tipp auf eine Mitteilung „Tag tracken?“ öffnet gleich das Tracking
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', ev => {
-    if (ev.data && ev.data.zyklus === 'track' && tr.n === null) { checkNewDay(); openTracker(today); }
+    if (ev.data && ev.data.zyklus) checkNotice();
   });
 }
-if (new URLSearchParams(location.search).get('m') === 'track') {
-  history.replaceState(null, '', location.pathname);
-  openTracker(today);
-}
+if (location.search) history.replaceState(null, '', location.pathname);
+watchNotice();
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 
 // nur für automatische Tests
