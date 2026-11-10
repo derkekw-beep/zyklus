@@ -3,6 +3,14 @@
 
 export const NOTES = [
   {
+    v: '2.3',
+    date: '10.11.2026',
+    items: [
+      'Neu: Kurzanleitung – in einer Minute erklärt, was die App kann und wo du es findest',
+      'Jederzeit wieder ansehen unter „Mehr“ → Kurzanleitung',
+    ],
+  },
+  {
     v: '2.2',
     date: '10.11.2026',
     items: [
@@ -141,6 +149,49 @@ export const NOTES = [
 ];
 
 export const APP_VERSION = NOTES[0].v;
+
+// Kurzanleitung: je Seite ein Bereich, höchstens vier kurze Punkte
+export const GUIDE = [
+  { em: '🌸', title: 'Deine App in einer Minute', lead: 'Du trägst ein – die App rechnet für dich.', points: [
+    ['🩸', 'Periode eintragen', 'Daraus entsteht die Vorhersage. Je mehr Zyklen, desto genauer.'],
+    ['📝', 'Tag tracken', 'Kurz festhalten, wie es dir geht. Die App findet daraus Muster.'],
+    ['🔒', 'Ganz privat', 'Kein Konto, keine Cloud. Alles bleibt auf deinem iPhone.'],
+  ] },
+  { em: '🎡', title: 'Heute', where: 'Reiter „Heute“', lead: 'Dein Startbildschirm – alles Wichtige auf einen Blick.', points: [
+    ['🎡', 'Ring drehen', 'Zeigt jeden Tag: Zyklustag, Phase und deine Einträge.'],
+    ['🩸', '„Periode heute“', 'Ein Tipp, und der heutige Tag ist eingetragen.'],
+    ['🌤️', '„Was dich erwartet“', 'Was du an dieser Stelle im Zyklus oft hattest.'],
+  ] },
+  { em: '📝', title: 'Tag tracken', where: '„Heute“ → Tag tracken', lead: 'Dauert nur ein paar Sekunden.', points: [
+    ['↺', '„Wie gestern“', 'Übernimmt deine Einträge vom Vortag mit einem Tipp.'],
+    ['⭐', 'Favoriten', 'Was du oft einträgst, steht ganz oben.'],
+    ['🧭', 'Leiste oben', 'Springt direkt zu Gefühle, Schmerzen, Schlaf …'],
+    ['✅', 'Speichern', 'Unten auf „Speichern“ tippen – fertig.'],
+  ] },
+  { em: '📅', title: 'Kalender', where: 'Reiter „Kalender“', lead: 'Rückblick und Vorschau.', points: [
+    ['👆', 'Tag antippen', 'Einträge ansehen oder nachtragen.'],
+    ['🩸', '„Periodentage markieren“', 'Vergangene Periode nachtragen: einfach die Tage antippen.'],
+    ['🗓️', 'Monatsname antippen', 'Zeigt das ganze Jahr.'],
+    ['🔎', 'Suche unten', 'Findet Notizen, Tags und Symptome.'],
+  ] },
+  { em: '😴', title: 'Schlaf', where: 'Karte auf „Heute“', lead: 'Zwei Tipps am Tag genügen.', points: [
+    ['🌙', 'Abends „Schlafen gehen“', 'Beim Hinlegen antippen.'],
+    ['☀️', 'Morgens „Aufgewacht“', 'Die Dauer rechnet die App selbst aus.'],
+    ['⏰', 'Vergessen?', 'Zeiten lassen sich beim Tracken unter „Schlaf“ nachtragen.'],
+  ] },
+  { em: '📊', title: 'Statistik', where: 'Reiter „Statistik“', lead: 'Was deine Einträge über dich verraten.', points: [
+    ['🔄', 'Zyklus', 'Längen, Durchschnitt und Verlauf.'],
+    ['🔍', 'Muster', 'An welchen Zyklustagen was auftritt.'],
+    ['😴', 'Schlaf', 'Schlafziel, Defizit und Rhythmus.'],
+    ['✨', 'Jahr', 'Dein Jahresrückblick.'],
+  ] },
+  { em: '⚙️', title: 'Mehr', where: 'Reiter „Mehr“', lead: 'Die App so einstellen, wie du sie magst.', points: [
+    ['📲', 'Mitteilungen', 'Einschalten für „Periode kommt“, „Zeit fürs Bett“ und mehr.'],
+    ['🧩', 'Anzeige', 'Ausblenden, was du nicht brauchst.'],
+    ['🎨', 'Farbthema', 'Fünf Farben zur Auswahl.'],
+    ['💾', 'Backup', 'Ab und zu speichern – sonst sind die Daten beim Handywechsel weg.'],
+  ] },
+];
 
 export const FEATURES = [
   ['🔮', 'Vorhersage', 'Nächste Periode aus dem Schnitt deiner letzten 8 Zyklen (ohne den kürzesten und längsten), mit typischer Spanne. Zwischenblutungen und vergessene Perioden werden erkannt und nicht mitgezählt.'],

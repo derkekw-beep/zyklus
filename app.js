@@ -1,7 +1,7 @@
 import * as C from './cycle.js';
 import { CATS, CHIP_CATS, CAT, OPT, NOTE_MAX, TAG_MAX, choose, toggle, cleanTags, favorites, copyTags, copyPreview, searchEntries } from './tracking.js';
 import * as S from './sleep.js';
-import { NOTES, APP_VERSION, FEATURES } from './notes.js';
+import { NOTES, APP_VERSION, FEATURES, GUIDE } from './notes.js';
 import { parseClue, looksLikeClue, readImportFile, mergeDays } from './importer.js';
 import { buildIcs, reminderEvents } from './ics.js';
 import { expectations, heatmap, yearReview } from './insights.js';
@@ -82,7 +82,7 @@ function freshData() {
     days: {},
     settings: { name: '', cycleLength: 28, periodLength: 5, lutealLength: 14, sleepGoal: 480, showFertile: true, hiddenCats: [], customTags: [], pillName: '', zoomLock: true, theme: 'rose', push: { ...PUSH_DEFAULTS }, show: Object.fromEntries(SHOW.map(x => [x[0], true])),
       remind: { period: true, fertile: false, pill: false, pillTime: 21 * 60, track: false, trackTime: 20 * 60 + 30 } },
-    meta: { created: new Date().toISOString(), lastBackup: null, seenVersion: null, sleepStart: null, sleepPill: false, sleepPillAt: null, pillSince: C.toIso(C.todayNum()), icsExport: null },
+    meta: { created: new Date().toISOString(), lastBackup: null, seenVersion: null, guideSeen: false, sleepStart: null, sleepPill: false, sleepPillAt: null, pillSince: C.toIso(C.todayNum()), icsExport: null },
   };
 }
 // sleep: Minuten, bed/wake: Uhrzeit (Min. seit Mitternacht) der Nacht VOR diesem Tag, pill: Schlaftablette in dieser Nacht
@@ -159,6 +159,7 @@ function normalize(o) {
   if (o.meta && typeof o.meta.created === 'string') d.meta.created = o.meta.created;
   if (o.meta && typeof o.meta.lastBackup === 'string' && Number.isFinite(Date.parse(o.meta.lastBackup))) d.meta.lastBackup = o.meta.lastBackup;
   if (o.meta && typeof o.meta.seenVersion === 'string') d.meta.seenVersion = o.meta.seenVersion;
+  if (o.meta && o.meta.guideSeen === true) d.meta.guideSeen = true;
   if (o.meta && o.meta.icsExport && typeof o.meta.icsExport.at === 'string' && Number.isFinite(Date.parse(o.meta.icsExport.at))) {
     d.meta.icsExport = { at: o.meta.icsExport.at, period: C.isValidIso(o.meta.icsExport.period) ? o.meta.icsExport.period : null };
   }
@@ -580,6 +581,44 @@ function sleepCard() {
   return '';
 }
 
+// --- Kurzanleitung: wenige Seiten, je ein Bereich -------------------------------------------
+const guide = { i: 0 };
+function renderGuide(dir = 0) {
+  const g = GUIDE[guide.i];
+  const last = guide.i === GUIDE.length - 1;
+  $('#guide-body').innerHTML = `<div class="guide-page${dir > 0 ? ' slide-next' : dir < 0 ? ' slide-prev' : ''}">
+    <div class="guide-em" aria-hidden="true">${g.em}</div>
+    <h2 id="guide-title">${esc(g.title)}</h2>
+    ${g.where ? `<p class="guide-where">${esc(g.where)}</p>` : ''}
+    <p class="guide-lead">${esc(g.lead)}</p>
+    <ul class="guide-points">${g.points.map(([em, t, d]) => `<li><span class="em" aria-hidden="true">${em}</span><div><b>${esc(t)}</b><p>${esc(d)}</p></div></li>`).join('')}</ul>
+  </div>`;
+  $('#guide-dots').innerHTML = GUIDE.map((p, k) => `<button class="guide-dot${k === guide.i ? ' on' : ''}" data-act="guide-goto" data-i="${k}" aria-label="Seite ${k + 1} von ${GUIDE.length}: ${esc(p.title)}"${k === guide.i ? ' aria-current="step"' : ''}></button>`).join('');
+  $('#guide-prev').hidden = guide.i === 0;
+  $('#guide-next').textContent = last ? 'Los geht’s' : 'Weiter';
+  $('#guide-skip').hidden = last;
+  $('#guide-body').scrollTop = 0;
+}
+function guideGo(i) {
+  const k = Math.max(0, Math.min(GUIDE.length - 1, i));
+  if (k === guide.i) return;
+  const dir = k > guide.i ? 1 : -1;
+  guide.i = k;
+  renderGuide(motionOk() ? dir : 0);
+}
+function openGuide() {
+  guide.i = 0;
+  renderGuide();
+  $('#guide').hidden = false;
+  $('#guide-next').focus({ preventScroll: true });
+}
+function closeGuide() {
+  $('#guide').hidden = true;
+  if (!state.meta.guideSeen) { state.meta.guideSeen = true; save(); }
+  render();
+}
+const guideCard = () => `<div class="card guide-row guide-card"><div><b>📖 Kurzanleitung</b><p>In einer Minute erklärt: was die App kann und wo du es findest.</p></div><div class="guide-card-btns"><button class="btn small primary" data-act="guide-open">Ansehen</button><button class="link" data-act="guide-later">Später</button></div></div>`;
+
 function newsCard() {
   const n = NOTES[0];
   return `<div class="card news-card">
@@ -643,6 +682,7 @@ function renderHome() {
     if (!Object.keys(state.days).length) { state.meta.seenVersion = APP_VERSION; save(); }
     else out.push(newsCard());
   }
+  if (!state.meta.guideSeen) out.push(guideCard());
 
   if (!A.hasData) {
     out.push(`<div class="card hero welcome">
@@ -1208,6 +1248,7 @@ function renderSettings() {
       <div class="btn-row"><button class="btn" data-act="clue-import">📥 Aus Clue importieren</button>${undoInfo() ? '<button class="btn ghost" data-act="undo-import">Import rückgängig</button>' : ''}</div>
       ${undoInfo() ? `<p class="row-sub">Sicherheitskopie vom ${esc(undoInfo())} – „Rückgängig“ stellt den Stand vor dem Import wieder her.</p>` : ''}
     </div>
+    <div class="card guide-row"><div><b>📖 Kurzanleitung</b><p>In einer Minute erklärt, was die App kann.</p></div><button class="btn small primary" data-act="guide-open">Ansehen</button></div>
     <details class="card fold" id="notes"${ui.folds.has('notes') ? ' open' : ''}><summary><h3>✨ Neuigkeiten <small>Version ${esc(APP_VERSION)}</small></h3></summary>
       ${NOTES.map((n, i) => `<details class="notes"${i === 0 ? ' open' : ''}><summary>Version ${esc(n.v)} <small>${esc(n.date)}</small></summary><ul class="plain">${n.items.map(it => `<li>${esc(it)}</li>`).join('')}</ul></details>`).join('')}
     </details>
@@ -2097,6 +2138,12 @@ const ACTIONS = {
     animateEnter($('#view-stats'), 'enter-soft');
   },
   'news-ok'() { state.meta.seenVersion = APP_VERSION; save(); renderHome(); },
+  'guide-open'() { openGuide(); },
+  'guide-later'() { state.meta.guideSeen = true; save(); renderHome(); toast('Du findest sie unter „Mehr“ → Kurzanleitung'); },
+  'guide-close'() { closeGuide(); },
+  'guide-prev'() { guideGo(guide.i - 1); },
+  'guide-next'() { if (guide.i === GUIDE.length - 1) closeGuide(); else guideGo(guide.i + 1); },
+  'guide-goto'(el) { guideGo(Number(el.dataset.i)); },
   'news-all'() {
     state.meta.seenVersion = APP_VERSION;
     save();
@@ -2352,6 +2399,12 @@ document.addEventListener('keydown', ev => {
     ev.preventDefault();
     setWheelDay(wheelSel() + (ev.key === 'ArrowRight' ? 1 : -1), true);
   }
+  if (!$('#guide').hidden) {
+    if (ev.key === 'Escape') closeGuide();
+    else if (ev.key === 'ArrowRight') guideGo(guide.i + 1);
+    else if (ev.key === 'ArrowLeft') guideGo(guide.i - 1);
+    return;
+  }
   if (ev.key === 'Escape' && tr.n !== null) {
     if (!$('#tr-ask').hidden) answerAsk('stay');
     else if (!$('#tr-custom').hidden) ACTIONS['tr-customize-done']();
@@ -2371,6 +2424,7 @@ function onSwipe(el, fn) {
 }
 onSwipe($('#view-cal'), dir => shiftMonth(dir));
 onSwipe($('#tr-week'), dir => trGoto(tr.n + 7 * dir));
+onSwipe($('#guide-body'), dir => guideGo(guide.i + dir));
 
 // App geht in den Hintergrund (iOS kann sie dann jederzeit beenden): offene Änderungen sichern,
 // auch wenn gerade die Rückfrage offen ist. Beim Zurückkommen: neuer Tag? Update da?

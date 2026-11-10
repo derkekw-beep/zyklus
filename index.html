@@ -102,6 +102,15 @@
   </div>
 </div>
 
+<div id="guide" class="guide" role="dialog" aria-modal="true" aria-labelledby="guide-title" hidden>
+  <div class="guide-top"><button id="guide-skip" class="link" data-act="guide-close">Überspringen</button></div>
+  <div id="guide-body" class="guide-body"></div>
+  <div class="guide-foot">
+    <div id="guide-dots" class="guide-dots"></div>
+    <div class="btn-row"><button id="guide-prev" class="btn" data-act="guide-prev">Zurück</button><button id="guide-next" class="btn primary grow" data-act="guide-next">Weiter</button></div>
+  </div>
+</div>
+
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
 <input type="file" id="import-file" accept="application/json,.json" hidden>
 <input type="file" id="clue-file" accept=".json,.zip,application/json,application/zip" hidden>

@@ -579,8 +579,8 @@ html.nozoom, html.nozoom body { touch-action: pan-x pan-y; }
 html.nozoom button, html.nozoom .chip, html.nozoom .day, html.nozoom .action { touch-action: manipulation; }
 
 /* --- Version 1.8: Kalender-Erinnerungen ---------------------------------------------- */
-.remind-card { display: flex; gap: 12px; align-items: center; justify-content: space-between; background: linear-gradient(160deg, var(--news-tint), var(--card) 75%); }
-.remind-card p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+.remind-card, .guide-row { display: flex; gap: 12px; align-items: center; justify-content: space-between; background: linear-gradient(160deg, var(--news-tint), var(--card) 75%); }
+.remind-card p, .guide-row p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
 .time-input { width: 7.5em; height: 44px; border: 0; border-radius: 12px; padding: 0 10px; background: var(--card-2); color: var(--text); font: 650 17px -apple-system, BlinkMacSystemFont, system-ui, sans-serif; text-align: center; -webkit-appearance: none; appearance: none; }
 
 .foot .made { display: inline-block; margin-top: 4px; font-size: 12px; letter-spacing: .01em; }
@@ -804,3 +804,30 @@ body::before {
 .sr-item .mini-chips { margin-top: 0; }
 .sr-note { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
 .sr-note mark { background: var(--accent-soft); color: var(--text); border-radius: 4px; padding: 0 2px; font-weight: 700; }
+
+/* --- Version 2.3: Kurzanleitung -------------------------------------------------------- */
+.guide { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; background: linear-gradient(180deg, var(--hero-tint), var(--bg) 46%); padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+.guide[hidden] { display: none; }
+.guide:not([hidden]) { animation: tracker-in .34s var(--ease-out); }
+.guide-top { display: flex; justify-content: flex-end; min-height: 44px; padding: 8px 18px 0; }
+.guide-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 0 22px 12px; }
+.guide-page { max-width: 460px; margin: 0 auto; text-align: center; }
+.guide-page.slide-next { animation: slide-next .3s var(--ease-out); }
+.guide-page.slide-prev { animation: slide-prev .3s var(--ease-out); }
+.guide-em { font-size: 60px; line-height: 1.1; margin-top: 4px; }
+.guide-page h2 { font-size: 27px; margin: 8px 0 6px; }
+.guide-where { display: inline-block; margin: 0 0 8px; padding: 4px 12px; border-radius: 999px; background: var(--accent-soft); color: var(--text); font-size: 13px; font-weight: 600; }
+.guide-lead { margin: 0 0 16px; color: var(--muted); font-size: 16px; }
+.guide-points { list-style: none; margin: 0; padding: 0; text-align: left; display: grid; gap: 10px; }
+.guide-points li { display: flex; gap: 14px; align-items: center; padding: 13px 16px; border-radius: 18px; background: var(--card); box-shadow: var(--shadow); }
+.guide-points .em { font-size: 26px; width: 34px; flex-shrink: 0; text-align: center; }
+.guide-points b { font-size: 16px; }
+.guide-points p { margin: 2px 0 0; color: var(--muted); font-size: 14px; line-height: 1.35; }
+.guide-foot { padding: 8px 22px 14px; max-width: 504px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+.guide-dots { display: flex; justify-content: center; gap: 2px; margin-bottom: 8px; }
+.guide-dot { width: 26px; height: 26px; padding: 0; border: 0; background: none; display: grid; place-items: center; }
+.guide-dot::before { content: ''; width: 8px; height: 8px; border-radius: 999px; background: var(--bar); transition: width .25s var(--ease-out), background-color .2s; }
+.guide-dot.on::before { width: 20px; background: var(--accent); }
+.guide-foot .btn { min-height: 50px; }
+.guide-card-btns { display: flex; flex-direction: column; align-items: center; gap: 6px; flex-shrink: 0; }
+@media (prefers-reduced-motion: reduce) { .guide:not([hidden]), .guide-page { animation: none; } }
