@@ -1707,15 +1707,6 @@ async function turnPushOff() {
   toast('Mitteilungen sind aus');
   redrawSettings();
 }
-async function testPush() {
-  try {
-    toast('Test wird angemeldet …');
-    await syncPush(true, { t: Date.now() + 20000, kind: 'test', title: '🌸 Test geglückt', body: 'So sehen Mitteilungen der Zyklus-App aus.' });
-    toast('Test ist unterwegs – kommt in 1–2 Minuten. Du kannst die App jetzt schließen.');
-  } catch (err) {
-    toast(err && err.message ? err.message : 'Test fehlgeschlagen');
-  }
-}
 const fPushWhen = fmt({ weekday: 'short', day: 'numeric', month: 'numeric' });
 function pushCard() {
   if (!pushConfigured()) return '';
@@ -1744,8 +1735,7 @@ function pushCard() {
     ${p.bedtime ? time('push-bed-time', p.bedTime) : ''}
     ${state.settings.showFertile ? sw('fertile', 'Fruchtbare Tage', 'Am ersten geschätzten Tag um 9 Uhr.') : ''}
     ${sw('discreet', 'Diskrete Texte', 'Auf dem Sperrbildschirm steht dann nur „Du hast eine Erinnerung“ statt z. B. „Periode in 2 Tagen“.')}
-    <p class="row-sub" id="push-next">${next ? `Nächste Mitteilung: ${esc(nextDay === today ? 'heute' : fPushWhen(nextDay))}, ${S.fmtTime(nowMin(new Date(next.t)))} Uhr · ${esc(p.discreet ? next.title : next.title.replace(/^\S+\s/u, m => (/[\p{L}]/u.test(m) ? m : '')))}` : 'Im Moment ist keine Mitteilung geplant.'}</p>
-    <div class="btn-row"><button class="btn" data-act="push-test">Test-Mitteilung senden</button></div>`;
+    <p class="row-sub" id="push-next">${next ? `Nächste Mitteilung: ${esc(nextDay === today ? 'heute' : fPushWhen(nextDay))}, ${S.fmtTime(nowMin(new Date(next.t)))} Uhr · ${esc(p.discreet ? next.title : next.title.replace(/^\S+\s/u, m => (/[\p{L}]/u.test(m) ? m : '')))}` : 'Im Moment ist keine Mitteilung geplant.'}</p>`;
   }
   body += '<p class="row-sub">Dafür meldet sich die App bei einem kleinen Weck-Dienst an. Er erfährt nur, <b>wann</b> er dein iPhone anstoßen soll – nie deine Einträge und nie den Text. Der Text entsteht auf deinem iPhone.</p>';
   return `<div class="card" id="push-card">${head}${body}</div>`;
@@ -2107,7 +2097,6 @@ const ACTIONS = {
   'wipe'() { wipe(); },
   'clue-import'() { $('#clue-file').click(); },
   'ics-export'() { exportIcs(false); },
-  'push-test'() { testPush(); },
   'ics-export-next'() { exportIcs(true); },
   'undo-import'() { undoImport(); },
 };
