@@ -5,7 +5,7 @@ import { NOTES, APP_VERSION, FEATURES } from './notes.js';
 import { parseClue, looksLikeClue, readImportFile, mergeDays } from './importer.js';
 import { buildIcs, reminderEvents } from './ics.js';
 import { expectations, heatmap, yearReview } from './insights.js';
-import { PUSH_DEFAULTS, PUSH_BOOLS, PUSH_TIMES, buildSchedule, scheduleTimes, pushSupported, pushConfigured, storePlan, subscribe, sendTimes, removeDevice, takeOpened } from './push.js';
+import { PUSH_DEFAULTS, PUSH_BOOLS, PUSH_TIMES, GRACE, buildSchedule, scheduleTimes, pushSupported, pushConfigured, storePlan, subscribe, sendTimes, removeDevice, takeOpened } from './push.js';
 
 // ---------------------------------------------------------------------------
 // Grundlagen
@@ -1642,7 +1642,7 @@ async function importBackup(file) {
 const PUSH_STAND = 'zyklus-push-stand'; // zuletzt übermittelter Stand – spart unnötige Anfragen
 let pushTimer = null;
 const pushLabel = (cat, id) => { const t = tagInfo(cat, id); return t ? t.label : ''; };
-const pushPlan = () => buildSchedule(state, A, today, Date.now(), pushLabel);
+const pushPlan = (grace = 0) => buildSchedule(state, A, today, Date.now(), pushLabel, grace);
 function schedulePushSync() {
   if (!state || !state.settings.push.on) return;
   clearTimeout(pushTimer);
@@ -1659,11 +1659,12 @@ async function syncPush(force = false, extra = null) {
     if (ui.tab === 'settings' && tr.n === null) renderSettings();
     return;
   }
-  const items = pushPlan();
+  const items = pushPlan(GRACE); // gerade Fälliges bleibt noch kurz drin, damit es nicht verloren geht
   if (extra) { items.push(extra); items.sort((x, y) => x.t - y.t); }
   await storePlan(items);
   const times = scheduleTimes(items);
-  const stand = `${sub.endpoint}|${times.join(',')}`;
+  // mit dem Tag im Stand: mindestens einmal täglich wird der Plan frisch übermittelt (heilt sich selbst)
+  const stand = `3|${today}|${sub.endpoint}|${times.join(',')}`;
   let last = null;
   try { last = localStorage.getItem(PUSH_STAND); } catch { /* egal */ }
   if (!force && last === stand) return;
@@ -1746,6 +1747,13 @@ async function checkNotice() {
 // der Vermerk kann einen Augenblick nach dem Öffnen der App eintreffen
 function watchNotice() { checkNotice(); setTimeout(checkNotice, 500); setTimeout(checkNotice, 1500); }
 const fPushWhen = fmt({ weekday: 'short', day: 'numeric', month: 'numeric' });
+function pushNextText() {
+  const next = pushPlan()[0];
+  if (!next) return 'Im Moment ist keine Mitteilung geplant.';
+  const day = C.todayNum(new Date(next.t));
+  const title = next.title.replace(/^\S+\s/u, m => (/\p{L}/u.test(m) ? m : '')); // ohne das Symbol am Anfang
+  return `Nächste Mitteilung: ${day === today ? 'heute' : fPushWhen(day)}, ${S.fmtTime(nowMin(new Date(next.t)))} Uhr · ${title}`;
+}
 function pushCard() {
   if (!pushConfigured()) return '';
   const p = state.settings.push;
@@ -1760,8 +1768,6 @@ function pushCard() {
   const time = (id, v) => `<label class="row compact"><span class="row-title">um</span><input id="${id}" class="time-input" type="time" value="${S.fmtTime(v)}"></label>`;
   let body = sw('on', 'Mitteilungen einschalten', 'Echte Mitteilungen aufs iPhone – auch wenn die App zu ist.');
   if (p.on) {
-    const next = pushPlan()[0];
-    const nextDay = next ? C.todayNum(new Date(next.t)) : null;
     body += `
     ${sw('period', 'Periode kommt', '2 Tage vorher um 9 Uhr und am erwarteten Tag um 8 Uhr.')}
     ${sw('late', 'Periode vergessen einzutragen?', 'Einmal, wenn sie 3 Tage überfällig ist.')}
@@ -1773,7 +1779,7 @@ function pushCard() {
     ${p.bedtime ? time('push-bed-time', p.bedTime) : ''}
     ${state.settings.showFertile ? sw('fertile', 'Fruchtbare Tage', 'Am ersten geschätzten Tag um 9 Uhr.') : ''}
     ${sw('discreet', 'Diskrete Texte', 'Auf dem Sperrbildschirm steht dann nur „Du hast eine Erinnerung“ statt z. B. „Periode in 2 Tagen“.')}
-    <p class="row-sub" id="push-next">${next ? `Nächste Mitteilung: ${esc(nextDay === today ? 'heute' : fPushWhen(nextDay))}, ${S.fmtTime(nowMin(new Date(next.t)))} Uhr · ${esc(p.discreet ? next.title : next.title.replace(/^\S+\s/u, m => (/[\p{L}]/u.test(m) ? m : '')))}` : 'Im Moment ist keine Mitteilung geplant.'}</p>`;
+    <p class="row-sub" id="push-next">${esc(pushNextText())}</p>`;
   }
   body += '<p class="row-sub">Dafür meldet sich die App bei einem kleinen Weck-Dienst an. Er erfährt nur, <b>wann</b> er dein iPhone anstoßen soll – nie deine Einträge und nie den Text. Der Text entsteht auf deinem iPhone.</p>';
   return `<div class="card" id="push-card">${head}${body}</div>`;
@@ -2204,7 +2210,8 @@ document.addEventListener('change', ev => {
     else { state.settings.push[k] = t.checked; save(); redrawSettings(); }
   } else if (t.id === 'push-track-time' || t.id === 'push-bed-time') {
     const v = S.parseTime(t.value);
-    if (v !== null) { state.settings.push[t.id === 'push-track-time' ? 'trackTime' : 'bedTime'] = v; save(); redrawSettings(); }
+    // nicht neu zeichnen: iOS meldet jede Drehung am Uhrzeit-Rad, ein Neuzeichnen würde es sofort schließen
+    if (v !== null) { state.settings.push[t.id === 'push-track-time' ? 'trackTime' : 'bedTime'] = v; save(); const pn = $('#push-next'); if (pn) pn.textContent = pushNextText(); }
   } else if (t.dataset.show) {
     // nicht alles neu zeichnen: der Schalter soll sichtbar umlegen
     state.settings.show[t.dataset.show] = t.checked;

@@ -25,6 +25,9 @@ export const PUSH_BOOLS = ['on', 'period', 'late', 'expect', 'track', 'sleepTime
 export const PUSH_TIMES = ['trackTime', 'bedTime'];
 export const HORIZON = 30;        // so viele Tage im Voraus wird geplant (beim Öffnen der App wird neu geplant)
 export const MAX_ITEMS = 100;
+// So lange bleibt ein gerade fällig gewordener Eintrag noch im Plan. Sonst ginge er verloren, wenn die App
+// ihren Plan genau in dem Augenblick neu schickt, in dem der Anstoß unterwegs ist.
+export const GRACE = 10 * 60000;
 const SENSITIVE = new Set(['period', 'late', 'expect', 'fertile']);
 export const DISCREET = { title: 'Zyklus', body: 'Du hast eine Erinnerung – tippe zum Öffnen.' };
 
@@ -37,8 +40,9 @@ const fmtDay = n => new Intl.DateTimeFormat('de-DE', { timeZone: 'UTC', weekday:
 
 // Der Plan: welche Mitteilung wann. data = gespeicherte Daten, a = analyze()-Ergebnis, today = Tageszahl,
 // now = Zeitpunkt (ms), labelOf(cat, id) = Anzeigename einer Option (für „Was dich erwartet“).
-// Ergebnis: [{ t, kind, title, body }] – nur Zukünftiges, nach Zeit sortiert.
-export function buildSchedule(data, a, today, now, labelOf = (c, id) => id) {
+// grace = so viele ms darf ein Eintrag schon vorbei sein (0 = nur Zukünftiges).
+// Ergebnis: [{ t, kind, title, body }], nach Zeit sortiert.
+export function buildSchedule(data, a, today, now, labelOf = (c, id) => id, grace = 0) {
   const st = (data && data.settings) || {};
   const p = { ...PUSH_DEFAULTS, ...(st.push || {}) };
   if (!p.on) return [];
@@ -89,7 +93,7 @@ export function buildSchedule(data, a, today, now, labelOf = (c, id) => id) {
   }
   const end = now + HORIZON * DAY;
   return items
-    .filter(i => i.t > now && i.t <= end)
+    .filter(i => i.t > now - grace && i.t <= end)
     .sort((x, y) => x.t - y.t)
     .slice(0, MAX_ITEMS)
     .map(i => (p.discreet && SENSITIVE.has(i.kind) ? { ...i, ...DISCREET } : i));
