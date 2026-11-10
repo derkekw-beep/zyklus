@@ -5,6 +5,7 @@ import { NOTES, APP_VERSION, FEATURES } from './notes.js';
 import { parseClue, looksLikeClue, readImportFile, mergeDays } from './importer.js';
 import { buildIcs, reminderEvents } from './ics.js';
 import { expectations, heatmap, yearReview } from './insights.js';
+import { PUSH_DEFAULTS, PUSH_BOOLS, PUSH_TIMES, buildSchedule, scheduleTimes, pushSupported, pushConfigured, storePlan, subscribe, sendTimes, removeDevice } from './push.js';
 
 // ---------------------------------------------------------------------------
 // Grundlagen
@@ -79,7 +80,7 @@ function freshData() {
     app: 'zyklus',
     version: 1,
     days: {},
-    settings: { name: '', cycleLength: 28, periodLength: 5, lutealLength: 14, sleepGoal: 480, showFertile: true, hiddenCats: [], customTags: [], pillName: '', zoomLock: true, theme: 'rose', show: Object.fromEntries(SHOW.map(x => [x[0], true])),
+    settings: { name: '', cycleLength: 28, periodLength: 5, lutealLength: 14, sleepGoal: 480, showFertile: true, hiddenCats: [], customTags: [], pillName: '', zoomLock: true, theme: 'rose', push: { ...PUSH_DEFAULTS }, show: Object.fromEntries(SHOW.map(x => [x[0], true])),
       remind: { period: true, fertile: false, pill: false, pillTime: 21 * 60, track: false, trackTime: 20 * 60 + 30 } },
     meta: { created: new Date().toISOString(), lastBackup: null, seenVersion: null, sleepStart: null, sleepPill: false, sleepPillAt: null, pillSince: C.toIso(C.todayNum()), icsExport: null },
   };
@@ -143,6 +144,10 @@ function normalize(o) {
   if (typeof s.zoomLock === 'boolean') d.settings.zoomLock = s.zoomLock;
   if (typeof s.theme === 'string' && THEME[s.theme]) d.settings.theme = s.theme;
   if (s.show && typeof s.show === 'object') for (const [k] of SHOW) if (typeof s.show[k] === 'boolean') d.settings.show[k] = s.show[k];
+  if (s.push && typeof s.push === 'object') {
+    for (const k of PUSH_BOOLS) if (typeof s.push[k] === 'boolean') d.settings.push[k] = s.push[k];
+    for (const k of PUSH_TIMES) if (S.isTime(s.push[k])) d.settings.push[k] = s.push[k];
+  }
   if (s.remind && typeof s.remind === 'object') {
     for (const k of ['period', 'fertile', 'pill', 'track']) if (typeof s.remind[k] === 'boolean') d.settings.remind[k] = s.remind[k];
     for (const k of ['pillTime', 'trackTime']) if (S.isTime(s.remind[k])) d.settings.remind[k] = s.remind[k];
@@ -193,6 +198,7 @@ function save() {
   try {
     localStorage.setItem(KEY, JSON.stringify(state));
     storageOk = true;
+    schedulePushSync(); // der Plan für Mitteilungen hängt an den Einträgen
   } catch {
     storageOk = false;
     toast('Speichern hat nicht geklappt – Speicher voll oder gesperrt');
@@ -1191,6 +1197,7 @@ function renderSettings() {
         ? `<div class="tag-list">${s.customTags.map(t => `<span class="tag-item">${esc(t)}<button data-del-tag="${esc(t)}" aria-label="Tag ${esc(t)} löschen">✕</button></span>`).join('')}</div>`
         : '<p class="muted small">Noch keine. Eigene Tags legst du beim Tracken unter „Meine Tags“ an.</p>'}
     </details>
+    ${pushCard()}
     ${remindCard()}
     <div class="card"><h3>💾 Backup</h3>
       <p class="muted small">Deine Einträge liegen nur auf diesem Gerät. Wird die App gelöscht oder das Handy gewechselt, sind sie ohne Backup weg. Das Backup ist eine Datei, die du z. B. in „Dateien“ oder iCloud ablegst.</p>
@@ -1212,6 +1219,7 @@ function renderSettings() {
         <li>Kein Konto, keine Cloud, keine Werbung, keine Analyse-Tools.</li>
         <li>Einträge verlassen dieses Gerät nie – außer du speicherst selbst ein Backup.</li>
         <li>Aus dem Internet lädt die App nur ihren eigenen Programmcode (für Updates).</li>
+        <li>Nur wenn du „Mitteilungen“ einschaltest: Ein Weck-Dienst bekommt die Push-Adresse dieses Geräts und Uhrzeiten, zu denen er es anstoßen soll – keine Einträge, keine Texte, keinen Namen.</li>
       </ul>
     </details>
     <div class="card"><button class="btn danger wide" data-act="wipe">Alle Daten löschen</button></div>
@@ -1629,13 +1637,127 @@ async function importBackup(file) {
   dropUndo();
   toast('Backup geladen');
 }
+// --- Mitteilungen (Push) --------------------------------------------------------------------
+// Die App plant lokal, welche Mitteilung wann kommt (push.js), und gibt dem Weck-Dienst nur die Zeitpunkte.
+const PUSH_STAND = 'zyklus-push-stand'; // zuletzt übermittelter Stand – spart unnötige Anfragen
+let pushTimer = null;
+const pushLabel = (cat, id) => { const t = tagInfo(cat, id); return t ? t.label : ''; };
+const pushPlan = () => buildSchedule(state, A, today, Date.now(), pushLabel);
+function schedulePushSync() {
+  if (!state || !state.settings.push.on) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => syncPush().catch(() => { /* beim nächsten Speichern oder Öffnen erneut */ }), 1500);
+}
+async function syncPush(force = false, extra = null) {
+  if (!state.settings.push.on || !pushSupported() || !pushConfigured()) return;
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    // z. B. Backup auf einem neuen Gerät geladen: dort muss neu eingeschaltet werden
+    state.settings.push.on = false;
+    save();
+    if (ui.tab === 'settings' && tr.n === null) renderSettings();
+    return;
+  }
+  const items = pushPlan();
+  if (extra) { items.push(extra); items.sort((x, y) => x.t - y.t); }
+  await storePlan(items);
+  const times = scheduleTimes(items);
+  const stand = `${sub.endpoint}|${times.join(',')}`;
+  let last = null;
+  try { last = localStorage.getItem(PUSH_STAND); } catch { /* egal */ }
+  if (!force && last === stand) return;
+  await sendTimes(sub.endpoint, times);
+  try { localStorage.setItem(PUSH_STAND, extra ? '' : stand); } catch { /* egal */ }
+}
+async function pushCleanup() {
+  try {
+    clearTimeout(pushTimer);
+    try { localStorage.removeItem(PUSH_STAND); } catch { /* egal */ }
+    if (!pushSupported()) return;
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      if (pushConfigured()) await removeDevice(sub.endpoint).catch(() => { /* Dienst nicht erreichbar: das Gerät meldet sich gleich selbst ab */ });
+      await sub.unsubscribe();
+    }
+    await storePlan([]);
+  } catch { /* egal */ }
+}
+const redrawSettings = () => { if (tr.n === null && ui.tab === 'settings') renderSettings(); };
+async function turnPushOn() {
+  try {
+    await subscribe(navigator.serviceWorker.ready); // fragt als Erstes die Erlaubnis an (muss im Tipp passieren)
+    state.settings.push.on = true;
+    await syncPush(true);
+    save();
+    toast('Mitteilungen sind eingeschaltet');
+  } catch (err) {
+    state.settings.push.on = false;
+    save();
+    pushCleanup(); // keine halbe Anmeldung zurücklassen
+    toast(err && err.message ? err.message : 'Mitteilungen ließen sich nicht einschalten');
+  }
+  redrawSettings();
+}
+async function turnPushOff() {
+  state.settings.push.on = false;
+  save();
+  await pushCleanup();
+  toast('Mitteilungen sind aus');
+  redrawSettings();
+}
+async function testPush() {
+  try {
+    toast('Test wird angemeldet …');
+    await syncPush(true, { t: Date.now() + 20000, kind: 'test', title: '🌸 Test geglückt', body: 'So sehen Mitteilungen der Zyklus-App aus.' });
+    toast('Test ist unterwegs – kommt in 1–2 Minuten. Du kannst die App jetzt schließen.');
+  } catch (err) {
+    toast(err && err.message ? err.message : 'Test fehlgeschlagen');
+  }
+}
+const fPushWhen = fmt({ weekday: 'short', day: 'numeric', month: 'numeric' });
+function pushCard() {
+  if (!pushConfigured()) return '';
+  const p = state.settings.push;
+  const head = '<h3>📲 Mitteilungen</h3>';
+  if (!pushSupported()) {
+    return `<div class="card">${head}<p class="muted small">${isIOS && !standalone
+      ? 'Mitteilungen gibt es nur in der App vom Home-Bildschirm, nicht im Safari-Tab.'
+      : 'Dieser Browser unterstützt keine Mitteilungen.'}</p></div>`;
+  }
+  const sw = (key, title, sub) => `<label class="row"><div><div class="row-title">${title}</div><div class="row-sub">${sub}</div></div>
+      <span class="switch"><input type="checkbox" data-push="${key}" ${p[key] ? 'checked' : ''}><span></span></span></label>`;
+  const time = (id, v) => `<label class="row compact"><span class="row-title">um</span><input id="${id}" class="time-input" type="time" value="${S.fmtTime(v)}"></label>`;
+  let body = sw('on', 'Mitteilungen einschalten', 'Echte Mitteilungen aufs iPhone – auch wenn die App zu ist.');
+  if (p.on) {
+    const next = pushPlan()[0];
+    const nextDay = next ? C.todayNum(new Date(next.t)) : null;
+    body += `
+    ${sw('period', 'Periode kommt', '2 Tage vorher um 9 Uhr und am erwarteten Tag um 8 Uhr.')}
+    ${sw('late', 'Periode vergessen einzutragen?', 'Einmal, wenn sie 3 Tage überfällig ist.')}
+    ${sw('expect', 'Was dich erwartet', 'Morgens um 9 Uhr, wenn laut deinen Einträgen etwas ansteht – z. B. Kopfschmerzen.')}
+    ${sw('track', 'Ans Tracken erinnern', 'Täglich – aber nur, wenn du an dem Tag noch nichts eingetragen hast.')}
+    ${p.track ? time('push-track-time', p.trackTime) : ''}
+    ${sw('sleepTimer', 'Schlaf-Timer läuft noch', 'Wenn er 10 Stunden nach „Schlafen gehen“ nicht beendet ist.')}
+    ${sw('bedtime', 'Zeit fürs Bett', 'Täglich zur gewählten Uhrzeit.')}
+    ${p.bedtime ? time('push-bed-time', p.bedTime) : ''}
+    ${state.settings.showFertile ? sw('fertile', 'Fruchtbare Tage', 'Am ersten geschätzten Tag um 9 Uhr.') : ''}
+    ${sw('discreet', 'Diskrete Texte', 'Auf dem Sperrbildschirm steht dann nur „Du hast eine Erinnerung“ statt z. B. „Periode in 2 Tagen“.')}
+    <p class="row-sub" id="push-next">${next ? `Nächste Mitteilung: ${esc(nextDay === today ? 'heute' : fPushWhen(nextDay))}, ${S.fmtTime(nowMin(new Date(next.t)))} Uhr · ${esc(p.discreet ? next.title : next.title.replace(/^\S+\s/u, m => (/[\p{L}]/u.test(m) ? m : '')))}` : 'Im Moment ist keine Mitteilung geplant.'}</p>
+    <div class="btn-row"><button class="btn" data-act="push-test">Test-Mitteilung senden</button></div>`;
+  }
+  body += '<p class="row-sub">Dafür meldet sich die App bei einem kleinen Weck-Dienst an. Er erfährt nur, <b>wann</b> er dein iPhone anstoßen soll – nie deine Einträge und nie den Text. Der Text entsteht auf deinem iPhone.</p>';
+  return `<div class="card" id="push-card">${head}${body}</div>`;
+}
+
 // --- Erinnerungen über den iPhone-Kalender (.ics) ------------------------------------------
 function remindCard() {
   const r = state.settings.remind;
   const ex = state.meta.icsExport;
   const sw = (key, title, sub) => `<label class="row"><div><div class="row-title">${title}</div><div class="row-sub">${sub}</div></div>
       <span class="switch"><input type="checkbox" data-remind="${key}" ${r[key] ? 'checked' : ''}><span></span></span></label>`;
-  return `<div class="card"><h3>🔔 Erinnerungen</h3>
+  return `<div class="card"><h3>🔔 Erinnerungen im Kalender</h3>
     <p class="muted small">Die App legt Termine mit Erinnerung in deinem iPhone-Kalender an – ohne Server, alles bleibt auf dem iPhone. Tipp: in der Kalender-Abfrage einen eigenen Kalender „Zyklus“ wählen.</p>
     ${sw('period', 'Nächste Periode', '2 Tage vorher und am Tag selbst')}
     ${sw('fertile', 'Fruchtbare Tage', 'Kalender-Schätzung, nicht sinnvoll mit der Pille')}
@@ -1757,7 +1879,9 @@ function undoImport() {
 function wipe() {
   if (!confirm('Wirklich alle Einträge und Einstellungen löschen?')) return;
   if (!confirm('Letzte Rückfrage: Das lässt sich ohne Backup nicht rückgängig machen. Löschen?')) return;
+  const hadPush = state.settings.push.on;
   state = freshData();
+  if (hadPush) pushCleanup();
   ui.mark = false;
   try {
     const keys = [];
@@ -1983,6 +2107,7 @@ const ACTIONS = {
   'wipe'() { wipe(); },
   'clue-import'() { $('#clue-file').click(); },
   'ics-export'() { exportIcs(false); },
+  'push-test'() { testPush(); },
   'ics-export-next'() { exportIcs(true); },
   'undo-import'() { undoImport(); },
 };
@@ -2045,6 +2170,13 @@ document.addEventListener('change', ev => {
     state.settings[t.dataset.setting] = t.checked;
     if (t.dataset.setting === 'zoomLock') applyZoomLock();
     commit();
+  } else if (t.dataset.push) {
+    const k = t.dataset.push;
+    if (k === 'on') { if (t.checked) turnPushOn(); else turnPushOff(); } // nicht warten: die Erlaubnis-Abfrage muss im Tipp starten
+    else { state.settings.push[k] = t.checked; save(); redrawSettings(); }
+  } else if (t.id === 'push-track-time' || t.id === 'push-bed-time') {
+    const v = S.parseTime(t.value);
+    if (v !== null) { state.settings.push[t.id === 'push-track-time' ? 'trackTime' : 'bedTime'] = v; save(); redrawSettings(); }
   } else if (t.dataset.show) {
     // nicht alles neu zeichnen: der Schalter soll sichtbar umlegen
     state.settings.show[t.dataset.show] = t.checked;
@@ -2220,6 +2352,7 @@ document.addEventListener('visibilitychange', () => {
     checkNewDay();
     if (pendingReload && tr.n === null && !reloading) { reloading = true; location.reload(); return; }
     if (settleSleep() && tr.n === null) render();
+    schedulePushSync();
     if (swReg) swReg.update().catch(() => {});
   }
 });
@@ -2297,9 +2430,20 @@ if ('serviceWorker' in navigator && location.protocol !== 'file:') {
         const nw = reg.installing;
         if (nw) nw.addEventListener('statechange', () => { if (nw.state === 'activated') onActivated(nw); });
       });
+      syncPush().catch(() => { /* später erneut */ });
       return reg.update();
     })
     .catch(() => { /* offline-Cache ist nur Komfort */ });
+}
+// Tipp auf eine Mitteilung „Tag tracken?“ öffnet gleich das Tracking
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', ev => {
+    if (ev.data && ev.data.zyklus === 'track' && tr.n === null) { checkNewDay(); openTracker(today); }
+  });
+}
+if (new URLSearchParams(location.search).get('m') === 'track') {
+  history.replaceState(null, '', location.pathname);
+  openTracker(today);
 }
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 

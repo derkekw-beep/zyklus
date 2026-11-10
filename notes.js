@@ -3,6 +3,17 @@
 
 export const NOTES = [
   {
+    v: '2.2',
+    date: '10.11.2026',
+    items: [
+      'Echte Mitteilungen aufs iPhone – auch wenn die App zu ist. Einschalten unter „Mehr“ → Mitteilungen',
+      'Periode kommt: 2 Tage vorher und am erwarteten Tag. Dazu eine Nachfrage, falls du sie vergessen hast einzutragen',
+      '„Was dich erwartet“ am Morgen, wenn laut deinen Einträgen etwas ansteht',
+      'Auf Wunsch: ans Tracken erinnern (nur wenn noch nichts eingetragen ist), Zeit fürs Bett, Schlaf-Timer läuft noch',
+      'Privat: Der Weck-Dienst erfährt nur Uhrzeiten, die Texte entstehen auf deinem iPhone. Diskrete Texte für den Sperrbildschirm einstellbar',
+    ],
+  },
+  {
     v: '2.1',
     date: '10.11.2026',
     items: [
@@ -144,7 +155,8 @@ export const FEATURES = [
   ['📅', 'Kalender', 'Periode, Vorhersage, fruchtbare Tage, Eisprung und alle Einträge auf einen Blick. Vergangene Perioden schnell nachtragen. Unten: Einträge durchsuchen (Notizen, eigene Tags, Symptome).'],
   ['📊', 'Statistik', 'Zyklusverlauf, Durchschnittswerte und Muster – zum Beispiel an welchem Zyklustag Krämpfe meistens auftreten. „Dein Zyklus auf einen Blick“ zeigt das als Farbstreifen über alle Zyklustage.'],
   ['✨', 'Jahresrückblick', 'Unter Statistik → Jahr: getrackte Tage, Perioden, Zykluslängen, Schlaf und was du am häufigsten eingetragen hast.'],
-  ['🔔', 'Erinnerungen', 'Termine mit Erinnerung im iPhone-Kalender: nächste Periode, fruchtbare Tage, Pille und Tracken.'],
+  ['📲', 'Mitteilungen', 'Echte Mitteilungen aufs iPhone: Periode kommt, Nachfrage bei vergessener Periode, „Was dich erwartet“, Tracken, Schlaf. Jede einzeln schaltbar, auf Wunsch mit diskreten Texten. Ein Weck-Dienst erfährt dafür nur Uhrzeiten.'],
+  ['🔔', 'Erinnerungen im Kalender', 'Termine mit Erinnerung im iPhone-Kalender: nächste Periode, fruchtbare Tage, Pille und Tracken – ganz ohne Dienst.'],
   ['💾', 'Backup & Import', 'Alle Daten als Datei sichern (z. B. in iCloud Drive) und wiederherstellen. Daten aus Clue übernehmen.'],
   ['🔒', 'Privat', 'Kein Konto, keine Cloud, keine Werbung. Alles bleibt auf diesem iPhone.'],
 ];
