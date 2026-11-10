@@ -1,10 +1,10 @@
 import * as C from './cycle.js';
-import { CATS, CHIP_CATS, CAT, OPT, NOTE_MAX, TAG_MAX, choose, toggle, cleanTags } from './tracking.js';
+import { CATS, CHIP_CATS, CAT, OPT, NOTE_MAX, TAG_MAX, choose, toggle, cleanTags, favorites, copyTags, copyPreview, searchEntries } from './tracking.js';
 import * as S from './sleep.js';
 import { NOTES, APP_VERSION, FEATURES } from './notes.js';
 import { parseClue, looksLikeClue, readImportFile, mergeDays } from './importer.js';
 import { buildIcs, reminderEvents } from './ics.js';
-import { expectations } from './insights.js';
+import { expectations, heatmap, yearReview } from './insights.js';
 
 // ---------------------------------------------------------------------------
 // Grundlagen
@@ -17,6 +17,17 @@ const RANGES = { cycleLength: [20, 45, 28], periodLength: [2, 10, 5], lutealLeng
 const STEPS = { sleepGoal: 15 };
 const PHASES = [['periode', 'Periode', '🩸'], ['follikel', 'Follikelphase', '🌱'], ['eisprung', 'Fruchtbare Tage', '🥚'], ['luteal', 'Lutealphase', '🌙']];
 const PILL_MAX = 40;
+// Symbol je Kategorie: für die Sprungleiste und die Überschriften im Tracking
+const ICON = { period: '🩸', spot: '🟤', feel: '🙂', pain: '⚡', pms: '☁️', sleepq: '🌙', sleep: '🛌', sex: '❤️', bc: '💊', energy: '🔋', note: '📝', custom: '🏷️', mind: '🧠', digest: '🍽️', discharge: '💧', skin: '✨', hair: '💇', weight: '⚖️' };
+// Ein- und ausschaltbare Bereiche (unter „Mehr“ → Anzeige): Schlüssel, Titel, Erklärung
+const SHOW = [
+  ['expect', 'Was dich erwartet', 'Karte auf „Heute“ mit dem, was du an dieser Stelle im Zyklus oft hattest.'],
+  ['week', 'Die nächsten 7 Tage', 'Leiste unter dem Zyklus-Rad.'],
+  ['sleep', 'Schlaf-Karte', '„Schlafen gehen“ und „Wie hast du geschlafen?“ auf „Heute“.'],
+  ['quick', 'Schnell eintragen', '„Wie gestern“ und deine Favoriten oben im Tracking.'],
+  ['jump', 'Sprungleiste', 'Reihe mit allen Kategorien oben im Tracking.'],
+];
+const FAV_DAYS = 90; // Favoriten: was in den letzten 90 Tagen am häufigsten eingetragen wurde
 const FUTURE_MSG = 'Für die Zukunft gibt es nur die Vorhersage';
 // Farbthemen: id, Name, Akzent + Farbton (für die Auswahl), Hintergrund hell / dunkel (Statusleiste)
 const THEMES = [
@@ -68,7 +79,7 @@ function freshData() {
     app: 'zyklus',
     version: 1,
     days: {},
-    settings: { name: '', cycleLength: 28, periodLength: 5, lutealLength: 14, sleepGoal: 480, showFertile: true, hiddenCats: [], customTags: [], pillName: '', zoomLock: true, theme: 'rose',
+    settings: { name: '', cycleLength: 28, periodLength: 5, lutealLength: 14, sleepGoal: 480, showFertile: true, hiddenCats: [], customTags: [], pillName: '', zoomLock: true, theme: 'rose', show: Object.fromEntries(SHOW.map(x => [x[0], true])),
       remind: { period: true, fertile: false, pill: false, pillTime: 21 * 60, track: false, trackTime: 20 * 60 + 30 } },
     meta: { created: new Date().toISOString(), lastBackup: null, seenVersion: null, sleepStart: null, sleepPill: false, sleepPillAt: null, pillSince: C.toIso(C.todayNum()), icsExport: null },
   };
@@ -131,6 +142,7 @@ function normalize(o) {
   if (typeof s.showFertile === 'boolean') d.settings.showFertile = s.showFertile;
   if (typeof s.zoomLock === 'boolean') d.settings.zoomLock = s.zoomLock;
   if (typeof s.theme === 'string' && THEME[s.theme]) d.settings.theme = s.theme;
+  if (s.show && typeof s.show === 'object') for (const [k] of SHOW) if (typeof s.show[k] === 'boolean') d.settings.show[k] = s.show[k];
   if (s.remind && typeof s.remind === 'object') {
     for (const k of ['period', 'fertile', 'pill', 'track']) if (typeof s.remind[k] === 'boolean') d.settings.remind[k] = s.remind[k];
     for (const k of ['pillTime', 'trackTime']) if (S.isTime(s.remind[k])) d.settings.remind[k] = s.remind[k];
@@ -201,7 +213,7 @@ function putEntry(n, e) {
 let state = load();
 let today = C.todayNum();
 let A = C.analyze(state, today);
-const ui = { tab: 'home', y: D(today).getUTCFullYear(), m: D(today).getUTCMonth(), mark: false, statsTab: 'cycle', folds: new Set(), wheelDay: null, calView: 'month' };
+const ui = { tab: 'home', y: D(today).getUTCFullYear(), m: D(today).getUTCMonth(), mark: false, statsTab: 'cycle', folds: new Set(), wheelDay: null, calView: 'month', searchQ: '', reviewYear: D(today).getUTCFullYear() };
 
 function refresh() {
   today = C.todayNum();
@@ -432,6 +444,19 @@ function renderWheel(animate = false) {
   host.setAttribute('aria-valuemax', String(b.max - today));
   host.classList.toggle('moved', sel !== today);
   $('#wheel-info').innerHTML = wheelInfo(cyc, info, sel, b);
+  for (const d of $$('#view-home .wa-day')) d.classList.toggle('sel', Number(d.dataset.n) === sel);
+}
+// Die nächsten 7 Tage auf einen Blick; Antippen dreht das Rad auf diesen Tag
+function weekAhead() {
+  const showF = state.settings.showFertile;
+  let h = '';
+  for (let i = 0; i < 7; i++) {
+    const n = today + i;
+    const cls = dayClasses(n, state.days[C.toIso(n)], showF).filter(c => c !== 'future');
+    const what = cls.includes('period') ? 'Periode' : cls.includes('pred') ? 'Periode erwartet' : cls.includes('ov') ? 'Eisprung geschätzt' : cls.includes('fertile') ? 'fruchtbar' : '';
+    h += `<button class="wa-day ${cls.join(' ')}" data-act="wheel-goto" data-n="${n}" aria-label="${esc(fLong(n))}${what ? `, ${what}` : ''}"><span class="wa-wd">${i === 0 ? 'Heute' : WD2[weekdayIdx(n)]}</span><span class="wa-num">${D(n).getUTCDate()}</span><i class="wa-mark" aria-hidden="true"></i></button>`;
+  }
+  return `<div class="week-ahead"><p class="wa-title">Die nächsten 7 Tage</p><div class="wa-row">${h}</div></div>`;
 }
 function setWheelDay(n, animate = false) {
   const b = wheelBounds();
@@ -625,6 +650,7 @@ function renderHome() {
     out.push(`<div class="card hero">
       <div class="ring-wrap" id="wheel" tabindex="0" role="slider" aria-label="Zyklus-Rad – drehen, um andere Tage anzusehen"></div>
       <div id="wheel-info"></div>
+      ${state.settings.show.week ? weekAhead() : ''}
     </div>`);
   }
 
@@ -637,11 +663,11 @@ function renderHome() {
   </div>`);
 
   lastSleepMode = sleepMode();
-  out.push(sleepCard());
+  if (state.settings.show.sleep || state.meta.sleepStart) out.push(sleepCard()); // ein laufender Timer bleibt immer sichtbar
   if (icsOutdated()) {
     out.push(`<div class="card remind-card"><div><b>🔔 Neue Vorhersage</b><p>Die Kalender-Erinnerung für die nächste Periode (${esc(fShort(A.nextStart))}) ist noch nicht in deinem Kalender.</p></div><button class="btn small primary" data-act="ics-export-next">Übernehmen</button></div>`);
   }
-  out.push(expectCard());
+  if (state.settings.show.expect) out.push(expectCard());
 
   if (e) {
     out.push(`<div class="card"><div class="card-head"><h3>Heute eingetragen</h3><button class="link" data-act="track-today">Bearbeiten</button></div>${entrySummary(e)}</div>`);
@@ -784,7 +810,27 @@ function renderCal() {
       ${showF ? '<span><i class="lg fertile"></i>Fruchtbar</span><span><i class="lg ov"></i>Eisprung</span>' : ''}
       <span><i class="lg spot"></i>Schmierblutung</span>
       <span><i class="lg log"></i>Weitere Einträge</span>
-    </div>`;
+    </div>
+    ${Object.keys(state.days).length ? `<div class="card search-card"><h3>🔎 Einträge durchsuchen</h3>
+      <label class="search slim"><input id="entry-search" type="search" placeholder="Notiz, Tag oder Symptom …" value="${esc(ui.searchQ)}" autocomplete="off" enterkeyhint="search" aria-label="Einträge durchsuchen"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L20 20"/></svg></label>
+      <div id="search-results" aria-live="polite">${searchResultsHtml()}</div>
+    </div>` : ''}`;
+}
+function searchResultsHtml() {
+  const q = ui.searchQ.trim();
+  if (q.length < 2) return '<p class="sr-hint">Sucht in Notizen, eigenen Tags und allem, was du eingetragen hast.</p>';
+  const res = searchEntries(state.days, q, 30).filter(r => C.toNum(r.iso) <= today);
+  if (!res.length) return `<p class="sr-hint">Nichts gefunden für „${esc(q)}“.</p>`;
+  const rows = res.map(r => {
+    const n = C.toNum(r.iso);
+    const chips = r.tags.slice(0, 4).map(t => {
+      const i = tagInfo(t.cat, t.id);
+      return i ? `<span class="mini-chip tone-${i.tone}"><span class="em" aria-hidden="true">${i.emoji}</span>${esc(i.label)}</span>` : '';
+    }).join('');
+    const note = r.note ? `<span class="sr-note">${esc(r.note.pre)}<mark>${esc(r.note.hit)}</mark>${esc(r.note.post)}</span>` : '';
+    return `<li><button class="sr-item" data-act="open-day" data-n="${n}"><b>${esc(fWdTitle(n))}</b>${chips ? `<span class="mini-chips">${chips}</span>` : ''}${note}</button></li>`;
+  }).join('');
+  return `<p class="sr-hint">${plural(res.length, 'Treffer', 'Treffer')}${res.length >= 30 ? ' (die neuesten 30)' : ''} – antippen öffnet den Tag.</p><ul class="sr-list">${rows}</ul>`;
 }
 function shiftMonth(delta) {
   if (ui.calView === 'year') { ui.y += delta; renderCal(); slideCal(delta); return; } // in der Jahresansicht: ganzes Jahr weiter
@@ -886,9 +932,87 @@ function statsCycle() {
   return out.join('');
 }
 
+// Zyklus auf einen Blick: je Beschwerde/Stimmung ein Streifen über die Zyklustage
+function heatCard() {
+  if (!A.hasData) return '';
+  const h = heatmap(state, A, today);
+  if (!h.rows.length) return '';
+  const L = h.len;
+  const ov = Math.max(L - A.luteal, A.periodLen); // wie in der Vorhersage (0 = Zyklustag 1)
+  const showF = state.settings.showFertile;
+  let band = '', axis = '';
+  for (let d = 0; d < L; d++) {
+    band += `<i class="${d < A.periodLen ? 'p' : showF && d >= ov - 5 && d <= ov + 1 ? 'f' : ''}"></i>`;
+    axis += `<i>${d === 0 || (d + 1) % 7 === 0 ? d + 1 : ''}</i>`;
+  }
+  const rows = h.rows.map(r => {
+    const t = tagInfo(r.cat, r.id);
+    if (!t) return '';
+    const peak = r.cells.indexOf(r.max) + 1;
+    const cells = r.cells.map(c => `<i class="l${c ? Math.max(1, Math.ceil((c / r.max) * 4)) : 0}"></i>`).join('');
+    return `<div class="heat-row tone-${t.tone}">
+      <div class="heat-label"><span class="em" aria-hidden="true">${t.emoji}</span><b>${esc(t.label)}</b><small>${r.total}× · meist um Tag ${peak}</small></div>
+      <div class="heat-strip" role="img" aria-label="${esc(t.label)}: ${r.total}-mal eingetragen, am häufigsten um Zyklustag ${peak}">${cells}</div>
+    </div>`;
+  }).join('');
+  return `<div class="card heat-card" style="--n:${L}"><h3>🗺️ Dein Zyklus auf einen Blick</h3>
+    <p class="muted small">Jede Spalte ist ein Zyklustag. Je kräftiger die Farbe, desto öfter hast du das an diesem Tag eingetragen.</p>
+    <div class="heat-strip band" aria-hidden="true">${band}</div>
+    <div class="heat-strip axis" aria-hidden="true">${axis}</div>
+    ${rows}
+    <div class="legend small"><span><i class="lg period"></i>Periode</span>${showF ? '<span><i class="lg ov-fill"></i>Fruchtbare Tage (geschätzt)</span>' : ''}</div>
+  </div>`;
+}
+
+// Jahresrückblick
+function reviewYears() {
+  const cur = D(today).getUTCFullYear();
+  const ys = new Set([cur]);
+  for (const iso of Object.keys(state.days)) { const y = Number(iso.slice(0, 4)); if (y <= cur) ys.add(y); }
+  return [...ys].sort((a, b) => a - b);
+}
+function statsYear() {
+  const years = reviewYears();
+  if (!years.includes(ui.reviewYear)) ui.reviewYear = years[years.length - 1];
+  const y = ui.reviewYear, i = years.indexOf(y);
+  const r = yearReview(state, A, y, today);
+  const nav = `<div class="year-nav">
+    <button class="icon-btn" data-act="year-prev" aria-label="Vorheriges Jahr"${i <= 0 ? ' disabled' : ''}>‹</button>
+    <h2>${y}</h2>
+    <button class="icon-btn" data-act="year-next" aria-label="Nächstes Jahr"${i >= years.length - 1 ? ' disabled' : ''}>›</button>
+  </div>`;
+  if (!r.tracked) return nav + emptyCard('🗓️', `Für ${y} gibt es keine Einträge.`);
+  const maxM = Math.max(1, ...r.months);
+  const ML = ['J', 'F', 'M', 'A', 'M', 'J', 'J', 'A', 'S', 'O', 'N', 'D'];
+  const bars = r.months.map((m, k) => `<div class="ym"><span class="ym-bar"><span class="bar" style="height:${m ? Math.max(8, (m / maxM) * 100).toFixed(0) : 0}%"></span></span><i>${ML[k]}</i></div>`).join('');
+  const out = [nav];
+  out.push(`<div class="card year-hero">
+    <p class="yh-small">Dein Jahr ${y}</p>
+    <p class="yh-big">${r.tracked}</p>
+    <p class="yh-small">${r.tracked === 1 ? 'Tag' : 'Tage'} getrackt${r.streak >= 3 ? ` · längste Serie: ${r.streak} Tage am Stück` : ''}</p>
+    <div class="ym-row" role="img" aria-label="Getrackte Tage je Monat">${bars}</div>
+  </div>`);
+  out.push(`<div class="tiles">
+    ${tile('Perioden', r.periods, plural(r.periodDays, 'Periodentag', 'Periodentage'))}
+    ${tile('Ø Zyklus', r.avgCycle ? plural(r.avgCycle, 'Tag', 'Tage') : '–', r.cycles ? `kürzester ${r.shortest} · längster ${r.longest}` : 'ab zwei Perioden')}
+    ${tile('Ø Schlaf', r.avgSleep ? fmtSleep(r.avgSleep) : '–', r.sleepNights ? `aus ${plural(r.sleepNights, 'Nacht', 'Nächten')}` : 'keine Einträge')}
+    ${tile('Notizen', r.notes, r.notes === 1 ? 'Tag mit Notiz' : 'Tage mit Notiz')}
+  </div>`);
+  const chip = t => { const info = tagInfo(t.cat, t.id); return info ? `<span class="mini-chip tone-${info.tone}"><span class="em" aria-hidden="true">${info.emoji}</span>${esc(info.label)}</span>` : ''; };
+  const top = r.top.map(t => { const c = chip(t); return c ? `<li>${c}<span class="ex-sub">${t.n}×</span></li>` : ''; }).join('');
+  if (top) out.push(`<div class="card"><h3>🏆 Am häufigsten eingetragen</h3><ul class="expect">${top}</ul></div>`);
+  const hi = [];
+  if (r.topFeel && chip(r.topFeel)) hi.push(statRow('Häufigstes Gefühl', chip(r.topFeel), `${r.topFeel.n}×`));
+  if (r.topPain && chip(r.topPain)) hi.push(statRow('Häufigster Schmerz', chip(r.topPain), `${r.topPain.n}×`));
+  if (hi.length) out.push(`<div class="card"><h3>💡 Auffällig in ${y}</h3>${hi.join('')}</div>`);
+  return out.join('');
+}
+
 function statsPatterns() {
   const pats = collectPatterns();
   const cards = [];
+  const heat = heatCard();
+  if (heat) cards.push(heat);
   for (const c of CHIP_CATS) {
     const m = pats[c.id];
     if (!m) continue;
@@ -1003,9 +1127,9 @@ function renderStats() {
     $('#view-stats').innerHTML = emptyCard('📊', 'Noch keine Daten. Sobald du Periodentage, Schlaf und Symptome einträgst, siehst du hier deine Zyklen und Muster.');
     return;
   }
-  const tabs = [['cycle', '🔄 Zyklus'], ['sleep', '😴 Schlaf'], ['patterns', '🔍 Muster']];
+  const tabs = [['cycle', '🔄 Zyklus'], ['sleep', '😴 Schlaf'], ['patterns', '🔍 Muster'], ['year', '✨ Jahr']];
   const seg = `<div class="seg-tabs" role="tablist">${tabs.map(([k, l]) => `<button role="tab" data-act="stats-tab" data-v="${k}" aria-selected="${ui.statsTab === k}" class="${ui.statsTab === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
-  const body = ui.statsTab === 'sleep' ? statsSleep() : ui.statsTab === 'patterns' ? statsPatterns() : statsCycle();
+  const body = ui.statsTab === 'sleep' ? statsSleep() : ui.statsTab === 'patterns' ? statsPatterns() : ui.statsTab === 'year' ? statsYear() : statsCycle();
   $('#view-stats').innerHTML = seg + body;
 }
 
@@ -1041,6 +1165,11 @@ function renderSettings() {
         ${THEMES.map(([id, name, acc, tint]) => `<label class="swatch" style="--sw:${acc};--sw2:${tint}"><input type="radio" name="theme" value="${id}" ${(THEME[s.theme] ? s.theme : 'rose') === id ? 'checked' : ''} aria-label="${esc(name)}"><i aria-hidden="true"></i><span>${esc(name)}</span></label>`).join('')}
       </div>
     </div>
+    <details class="card fold" id="fold-show"${ui.folds.has('fold-show') ? ' open' : ''}><summary><h3>🧩 Anzeige <small>was du sehen möchtest</small></h3></summary>
+      <p class="muted small">Schalte aus, was du nicht brauchst. Deine Einträge bleiben davon unberührt.</p>
+      ${SHOW.map(([k, title, sub]) => `<label class="row"><div><div class="row-title">${title}</div><div class="row-sub">${sub}</div></div>
+        <span class="switch"><input type="checkbox" data-show="${k}" ${s.show[k] ? 'checked' : ''}><span></span></span></label>`).join('')}
+    </details>
     <div class="card"><h3>🔮 Vorhersage</h3>
       ${stepper('cycleLength', 'Zykluslänge', A.usedCycles ? `Gerade nicht im Einsatz – die App nutzt deinen Schnitt (${A.cycleLen} Tage).` : 'Gilt, bis ein ganzer Zyklus eingetragen ist.')}
       ${stepper('periodLength', 'Periodendauer', A.usedPeriods ? `Gerade nicht im Einsatz – dein Schnitt: ${A.periodLen} Tage.` : 'Gilt, bis eine Periode eingetragen ist.')}
@@ -1175,6 +1304,59 @@ function trGoto(n) {
 function markDirty() {
   tr.dirty = true;
   $('#tr-save').disabled = false;
+  updateJump();
+}
+
+// Sprungleiste: alle Kategorien als Reihe zum Wischen; ein Tipp springt hin. Markiert ist, wo schon etwas steht.
+function catHas(c, d) {
+  if (!c.type) return (d.tags[c.id] || []).length > 0;
+  if (c.type === 'sleep') return hasSleepInfo(d);
+  if (c.type === 'note') return !!d.note.trim();
+  if (c.type === 'custom') return d.custom.length > 0;
+  if (c.type === 'weight') return !!d.weight;
+  return false;
+}
+function renderJump() {
+  const hidden = new Set(state.settings.hiddenCats);
+  $('#tr-jump').hidden = !state.settings.show.jump;
+  $('#tr-jump').innerHTML = CATS.filter(c => c.fixed || !hidden.has(c.id))
+    .map(c => `<button class="jump${catHas(c, tr.draft) ? ' has' : ''}" data-jump="${c.id}"><span class="em" aria-hidden="true">${ICON[c.id]}</span>${esc(c.name)}</button>`).join('');
+}
+function updateJump() {
+  if (!tr.draft) return;
+  for (const b of $$('#tr-jump .jump')) b.classList.toggle('has', catHas(CAT[b.dataset.jump], tr.draft));
+}
+function jumpTo(id) {
+  if (tr.q) { tr.q = ''; $('#tr-search').value = ''; renderTrBody(); }
+  const sec = $(`#tr-body [data-sec="${id}"]`);
+  if (sec) sec.scrollIntoView({ behavior: motionOk() ? 'smooth' : 'auto', block: 'start' });
+}
+
+// Schnell eintragen: „Wie gestern“ und die eigenen Favoriten ganz oben
+function quickHtml() {
+  if (tr.q.trim() || !state.settings.show.quick) return '';
+  const hidden = state.settings.hiddenCats;
+  const prev = state.days[C.toIso(tr.n - 1)];
+  const pre = prev ? copyPreview(tr.draft, prev, hidden).map(x => tagInfo(x.cat, x.id)).filter(Boolean) : [];
+  const favs = favorites(state.days, C.toIso(today - FAV_DAYS), { skip: hidden });
+  if (!pre.length && !favs.length) return '';
+  const copyBtn = pre.length
+    ? `<button class="copy-btn" data-act="copy-prev"><span class="em" aria-hidden="true">↺</span><span class="cb-text"><b>${tr.n === today ? 'Wie gestern' : 'Wie am Vortag'}</b><small>${esc(pre.slice(0, 3).map(t => t.label).join(', '))}${pre.length > 3 ? ` +${pre.length - 3}` : ''}</small></span><span class="cb-go" aria-hidden="true">Übernehmen</span></button>`
+    : '';
+  const chips = favs.map(f => {
+    const t = tagInfo(f.cat, f.id);
+    if (!t) return '';
+    const on = f.cat === 'custom' ? tr.draft.custom.includes(f.id) : (tr.draft.tags[f.cat] || []).includes(f.id);
+    const attr = f.cat === 'custom' ? `data-ctag="${esc(f.id)}"` : `data-chip="${f.cat}:${f.id}"`;
+    return `<button class="chip compact tone-${t.tone}${on ? ' on' : ''}" ${attr} aria-pressed="${on}"><span class="em" aria-hidden="true">${t.emoji}</span>${esc(t.label)}</button>`;
+  }).join('');
+  return `<section class="tr-quick" data-sec="quick"><h2>⚡ Schnell eintragen</h2>${copyBtn}${chips ? `<p class="sec-sub">Trägst du oft ein</p><div class="chips">${chips}</div>` : ''}</section>`;
+}
+function rerenderQuick() {
+  const old = $('#tr-body [data-sec="quick"]');
+  const html = quickHtml();
+  if (old) { if (html) old.outerHTML = html; else old.remove(); }
+  else if (html && !tr.q.trim()) $('#tr-body').insertAdjacentHTML('afterbegin', html);
 }
 
 function renderTracker() {
@@ -1221,7 +1403,7 @@ function renderWeek() {
 
 function secHead(c, extra = '') {
   const open = tr.info.has(c.id);
-  return `<div class="sec-head"><h2>${esc(c.name)}</h2>${c.info ? `<button class="more" data-info="${c.id}" aria-expanded="${open}">Mehr erfahren <span aria-hidden="true">${open ? '⌃' : '›'}</span></button>` : ''}${extra}</div>${open ? `<p class="sec-info">${esc(c.info)}</p>` : ''}`;
+  return `<div class="sec-head"><h2><span class="em" aria-hidden="true">${ICON[c.id] || ''}</span>${esc(c.name)}</h2>${c.info ? `<button class="more" data-info="${c.id}" aria-expanded="${open}">Mehr erfahren <span aria-hidden="true">${open ? '⌃' : '›'}</span></button>` : ''}${extra}</div>${open ? `<p class="sec-info">${esc(c.info)}</p>` : ''}`;
 }
 
 function sectionHtml(c) {
@@ -1314,8 +1496,9 @@ function readSleepTimes() {
 
 function renderTrBody() {
   const hidden = new Set(state.settings.hiddenCats);
-  let html = '';
+  let html = quickHtml();
   for (const c of CATS) if (c.fixed || !hidden.has(c.id)) html += sectionHtml(c);
+  renderJump();
   if (!html) html = `<p class="empty-search">Nichts gefunden für „${esc(tr.q)}“.</p>`;
   if (hidden.size && !tr.q) html += `<p class="tr-foot">${plural(hidden.size, 'Kategorie ist', 'Kategorien sind')} ausgeblendet – oben rechts über das Regler-Symbol wieder einblenden.</p>`;
   $('#tr-body').innerHTML = html;
@@ -1335,7 +1518,8 @@ function toggleChip(catId, id) {
   rerenderSection(catId);
   if (c.clears) rerenderSection(c.clears);
   if (catId === 'period' || catId === 'spot') renderWeek();
-  if ((tr.draft.tags[catId] || []).includes(id)) pop($(`#tr-body [data-chip="${catId}:${id}"]`));
+  rerenderQuick();
+  if ((tr.draft.tags[catId] || []).includes(id)) for (const b of $$(`#tr-body [data-chip="${catId}:${id}"]`)) pop(b);
 }
 function toggleCustomTag(name) {
   const i = tr.draft.custom.indexOf(name);
@@ -1343,7 +1527,8 @@ function toggleCustomTag(name) {
   else tr.draft.custom.push(name);
   markDirty();
   rerenderSection('custom');
-  if (i < 0) pop($$('#tr-body [data-ctag]').find(b => b.dataset.ctag === name));
+  rerenderQuick();
+  if (i < 0) for (const b of $$('#tr-body [data-ctag]')) if (b.dataset.ctag === name) pop(b);
 }
 function addCustomTag() {
   const inp = $('#tag-input');
@@ -1731,6 +1916,17 @@ const ACTIONS = {
     if (inp) inp.focus();
   },
   'tag-add'() { addCustomTag(); },
+  'copy-prev'() {
+    const n = copyTags(tr.draft, state.days[C.toIso(tr.n - 1)], state.settings.hiddenCats);
+    if (!n) return;
+    markDirty();
+    renderTrBody();
+    toast(`${plural(n, 'Eintrag', 'Einträge')} übernommen – anpassen und speichern`);
+  },
+  'open-day'(el) { openTracker(Number(el.dataset.n)); },
+  'wheel-goto'(el) { setWheelDay(Number(el.dataset.n), true); },
+  'year-prev'() { const ys = reviewYears(); const i = ys.indexOf(ui.reviewYear); if (i > 0) { ui.reviewYear = ys[i - 1]; renderStats(); animateEnter($('#view-stats'), 'enter-soft'); } },
+  'year-next'() { const ys = reviewYears(); const i = ys.indexOf(ui.reviewYear); if (i >= 0 && i < ys.length - 1) { ui.reviewYear = ys[i + 1]; renderStats(); animateEnter($('#view-stats'), 'enter-soft'); } },
   'pill-toggle'() {
     tr.draft.pill = tr.draft.pill ? null : { at: null, name: state.settings.pillName };
     markDirty();
@@ -1804,6 +2000,7 @@ document.addEventListener('click', ev => {
     return ui.mark ? togglePeriod(n) : openTracker(n);
   }
   if (d.wk) return trGoto(Number(d.wk));
+  if (d.jump) return jumpTo(d.jump);
   if (d.chip) { const [cat, id] = d.chip.split(':'); return toggleChip(cat, id); }
   if (d.ctag !== undefined) return toggleCustomTag(d.ctag);
   if (d.info) {
@@ -1818,6 +2015,7 @@ document.addEventListener('click', ev => {
 document.addEventListener('input', ev => {
   const t = ev.target;
   if (t.id === 'tr-search') { tr.q = t.value; renderTrBody(); return; }
+  if (t.id === 'entry-search') { ui.searchQ = t.value; $('#search-results').innerHTML = searchResultsHtml(); return; }
   if (!tr.draft) return;
   if (t.id === 'note') {
     tr.draft.note = t.value.slice(0, NOTE_MAX);
@@ -1847,6 +2045,10 @@ document.addEventListener('change', ev => {
     state.settings[t.dataset.setting] = t.checked;
     if (t.dataset.setting === 'zoomLock') applyZoomLock();
     commit();
+  } else if (t.dataset.show) {
+    // nicht alles neu zeichnen: der Schalter soll sichtbar umlegen
+    state.settings.show[t.dataset.show] = t.checked;
+    save();
   } else if (t.name === 'theme' && THEME[t.value]) {
     // nicht alles neu zeichnen: die Farben gleiten über, die Auswahl bleibt, wo sie ist
     state.settings.theme = t.value;

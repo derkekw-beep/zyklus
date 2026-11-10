@@ -170,3 +170,92 @@ export function cleanTags(raw) {
   if (tags.period) delete tags.spot;
   return tags;
 }
+
+// ---------------------------------------------------------------------------
+// Schnell eintragen: Favoriten, „Wie gestern“ und Suche (ohne DOM, in Node getestet)
+// ---------------------------------------------------------------------------
+const splitKey = key => { const i = key.indexOf(':'); return { cat: key.slice(0, i), id: key.slice(i + 1) }; };
+
+// Favoriten: was seit sinceIso ("JJJJ-MM-TT") am häufigsten eingetragen wurde. Periode und Schmierblutung
+// gehören nicht dazu (die stehen ohnehin ganz oben). skip: Kategorien, die ausgeblendet sind.
+// Ergebnis: [{ cat, id, n }] – cat 'custom' für eigene Tags.
+export function favorites(days, sinceIso, opt = {}) {
+  const { min = 3, max = 8, skip = [] } = opt;
+  const no = new Set(['period', 'spot', ...skip]);
+  const count = new Map();
+  const bump = key => count.set(key, (count.get(key) || 0) + 1);
+  for (const [iso, e] of Object.entries(days || {})) {
+    if (iso < sinceIso || !e) continue;
+    for (const c of CHIP_CATS) {
+      if (no.has(c.id)) continue;
+      for (const id of (e.tags && e.tags[c.id]) || []) if (c.optIds.has(id)) bump(`${c.id}:${id}`);
+    }
+    if (!no.has('custom')) for (const t of e.custom || []) bump(`custom:${t}`);
+  }
+  return [...count]
+    .filter(([, n]) => n >= min)
+    .sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
+    .slice(0, max)
+    .map(([key, n]) => ({ ...splitKey(key), n }));
+}
+
+// „Wie gestern“: Auswahl eines anderen Tages in den Entwurf übernehmen. Was im Entwurf schon steht, bleibt –
+// übernommen wird nur in Kategorien, die noch leer sind. Periode, Schmierblutung, Schlaf, Gewicht und Notiz
+// werden nie kopiert (die gehören zu genau einem Tag). Ergebnis: Anzahl übernommener Einträge.
+export function copyTags(draft, from, skip = []) {
+  if (!from) return 0;
+  const no = new Set(['period', 'spot', ...skip]);
+  let added = 0;
+  for (const c of CHIP_CATS) {
+    if (no.has(c.id)) continue;
+    const src = ((from.tags && from.tags[c.id]) || []).filter(id => c.optIds.has(id));
+    if (!src.length || (draft.tags[c.id] || []).length) continue;
+    draft.tags[c.id] = [...src];
+    added += src.length;
+  }
+  if (!no.has('custom')) {
+    for (const t of from.custom || []) if (!draft.custom.includes(t)) { draft.custom.push(t); added++; }
+  }
+  return added;
+}
+// Was würde copyTags übernehmen? (Vorschau am Knopf) -> [{ cat, id }]
+export function copyPreview(draft, from, skip = []) {
+  const trial = { tags: JSON.parse(JSON.stringify(draft.tags || {})), custom: [...(draft.custom || [])] };
+  const keys = t => [...Object.entries(t.tags).flatMap(([c, ids]) => ids.map(id => `${c}:${id}`)), ...t.custom.map(x => `custom:${x}`)];
+  const before = new Set(keys(trial));
+  copyTags(trial, from, skip);
+  return keys(trial).filter(k => !before.has(k)).map(splitKey);
+}
+
+// Einträge durchsuchen: Notizen, eigene Tags und die Namen der gewählten Optionen. Neueste zuerst.
+// Groß/klein und Umlaute sind egal: „arzt“ findet auch „Ärztin“ (gleich lange Ersetzung, damit der Ausschnitt stimmt).
+const fold = s => String(s).toLowerCase().replace(/ä/g, 'a').replace(/ö/g, 'o').replace(/ü/g, 'u');
+// Ergebnis: [{ iso, note: { pre, hit, post } | null, tags: [{ cat, id }] }]
+export function searchEntries(days, q, max = 40) {
+  const needle = fold(String(q || '').trim());
+  if (needle.length < 2) return [];
+  const out = [];
+  for (const iso of Object.keys(days || {}).sort().reverse()) {
+    const e = days[iso];
+    if (!e) continue;
+    const tags = [];
+    for (const c of CHIP_CATS) {
+      for (const id of (e.tags && e.tags[c.id]) || []) {
+        const o = OPT[c.id][id];
+        if (o && (fold(o.label).includes(needle) || fold(c.name).includes(needle))) tags.push({ cat: c.id, id });
+      }
+    }
+    for (const t of e.custom || []) if (fold(t).includes(needle)) tags.push({ cat: 'custom', id: t });
+    let note = null;
+    const text = typeof e.note === 'string' ? e.note.replace(/\s+/g, ' ') : '';
+    const i = fold(text).indexOf(needle);
+    if (i >= 0) {
+      const from = Math.max(0, i - 30), end = i + needle.length, to = Math.min(text.length, end + 70);
+      note = { pre: (from ? '…' : '') + text.slice(from, i), hit: text.slice(i, end), post: text.slice(end, to) + (to < text.length ? '…' : '') };
+    }
+    if (!note && !tags.length) continue;
+    out.push({ iso, note, tags });
+    if (out.length >= max) break;
+  }
+  return out;
+}

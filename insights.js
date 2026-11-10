@@ -7,7 +7,7 @@
 //    sind – sonst hieße „nichts eingetragen“ nicht „nichts gehabt“.
 //  - Gezeigt wird nur, was an dieser Stelle deutlich häufiger vorkommt als sonst im Zyklus. Wer jeden
 //    Tag „müde“ einträgt, bekommt das nicht als Vorhersage.
-import { toIso, MIN_CYCLE, MAX_CYCLE } from './cycle.js';
+import { toIso, toNum, cyclePhase, isPeriodDay, MIN_CYCLE, MAX_CYCLE } from './cycle.js';
 
 export const DEFAULTS = {
   days: 3,          // heute und die zwei Tage danach
@@ -106,4 +106,84 @@ export function expectations(data, a, today, opt = {}) {
   res.items.sort((x, y) => y.share - x.share || y.lift - x.lift || y.k - x.k);
   res.items = res.items.slice(0, o.max);
   return res;
+}
+
+const splitKey = key => { const i = key.indexOf(':'); return { cat: key.slice(0, i), id: key.slice(i + 1) }; };
+
+// ---------------------------------------------------------------------------------------------
+// Zyklus auf einen Blick: Wann im Zyklus trägst du was ein? Jede Zeile ist eine Beschwerde oder Stimmung,
+// jede Spalte ein Zyklustag (alle Zyklen auf die übliche Länge umgerechnet, damit lange und kurze
+// Zyklen zusammenpassen). Zyklen mit vermutlich vergessener Periode und überfällige Tage zählen nicht.
+// Ergebnis: { len, rows: [{ cat, id, total, max, cells: [Anzahl je Zyklustag] }] }
+// ---------------------------------------------------------------------------------------------
+export function heatmap(data, a, today, opt = {}) {
+  const { rows = 8, minCount = 3 } = opt;
+  const L = a.cycleLen;
+  const res = { len: L, rows: [] };
+  if (!a.hasData) return res;
+  const acc = new Map();
+  for (const [iso, e] of Object.entries((data && data.days) || {})) {
+    const n = toNum(iso);
+    if (n > today) continue;
+    const f = cyclePhase(n, a.periods, a.cycleLen, a.cycles);
+    if (f === null) continue;
+    const b = Math.min(L - 1, Math.floor(f * L));
+    for (const key of keysOf(e)) {
+      let r = acc.get(key);
+      if (!r) acc.set(key, (r = { total: 0, cells: new Array(L).fill(0) }));
+      r.cells[b]++;
+      r.total++;
+    }
+  }
+  res.rows = [...acc]
+    .filter(([, r]) => r.total >= minCount)
+    .sort((x, y) => y[1].total - x[1].total || (x[0] < y[0] ? -1 : 1))
+    .slice(0, rows)
+    .map(([key, r]) => ({ ...splitKey(key), total: r.total, max: Math.max(...r.cells), cells: r.cells }));
+  return res;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Jahresrückblick: Zahlen eines Kalenderjahres aus den eigenen Einträgen.
+// ---------------------------------------------------------------------------------------------
+export function yearReview(data, a, year, today) {
+  const pre = `${String(year).padStart(4, '0')}-`;
+  const months = new Array(12).fill(0);
+  const count = new Map();
+  const bump = key => count.set(key, (count.get(key) || 0) + 1);
+  const nums = [];
+  let periodDays = 0, notes = 0, sleepSum = 0, sleepNights = 0;
+  for (const [iso, e] of Object.entries((data && data.days) || {})) {
+    if (!iso.startsWith(pre) || !e) continue;
+    const n = toNum(iso);
+    if (n > today) continue;
+    nums.push(n);
+    months[Number(iso.slice(5, 7)) - 1]++;
+    if (isPeriodDay(e)) periodDays++;
+    if (typeof e.note === 'string' && e.note.trim()) notes++;
+    if (e.sleep) { sleepSum += e.sleep; sleepNights++; }
+    for (const [cat, ids] of Object.entries(e.tags || {})) if (cat !== 'period') for (const id of ids) bump(`${cat}:${id}`);
+    for (const t of e.custom || []) bump(`custom:${t}`);
+  }
+  nums.sort((x, y) => x - y);
+  let streak = 0, run = 0;
+  for (let i = 0; i < nums.length; i++) {
+    run = i && nums[i] === nums[i - 1] + 1 ? run + 1 : 1;
+    if (run > streak) streak = run;
+  }
+  const inYear = n => toIso(n).startsWith(pre);
+  const lens = a.hasData ? a.cycles.filter(c => inYear(c.start) && !c.note).map(c => c.length) : [];
+  const ranked = [...count].sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1)).map(([key, n]) => ({ ...splitKey(key), n }));
+  return {
+    year, tracked: nums.length, months, periodDays, notes, streak,
+    periods: a.hasData ? a.periods.filter(p => inYear(p.start)).length : 0,
+    cycles: lens.length,
+    avgCycle: lens.length ? Math.round(lens.reduce((s, x) => s + x, 0) / lens.length) : null,
+    shortest: lens.length ? Math.min(...lens) : null,
+    longest: lens.length ? Math.max(...lens) : null,
+    avgSleep: sleepNights ? Math.round(sleepSum / sleepNights) : null, sleepNights,
+    top: ranked.filter(r => r.cat === 'custom' || predictable(r.cat, r.id)).slice(0, 5),
+    topFeel: ranked.find(r => r.cat === 'feel') || null,
+    topPain: ranked.find(r => r.cat === 'pain' && r.id !== 'frei') || null,
+  };
 }
